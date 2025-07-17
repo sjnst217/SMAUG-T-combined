@@ -463,6 +463,7 @@ static void keccak_finalize(uint64_t s[25], unsigned int pos, unsigned int r,
  **************************************************/
 static unsigned int keccak_squeeze(uint8_t* out, size_t outlen, uint64_t s[25],
     unsigned int pos, unsigned int r) {
+    
     unsigned int i;
 
     while (outlen) {
@@ -1095,13 +1096,13 @@ c6 =    r0 =       1	    0	   0	    0	    0	    0	   0           r6 (0)
         r2 = r2 - r4;               // r2 = r(2) + (r(3) - r(2)) / 2 - r(6) - r(0) - {{2 * (r(4) - r(0) - 64 * r(6)) + r(5) + r(4) - 8 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0))} * 1/24}
         r1 = r1 - r5;               // r1 = {r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0)) + 8 * ((r(3) - r(2)))} * 1/18 - {{30 * ({r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0)) + 8 * ((r(3) - r(2)))} * 1/18) - r(5) + r(4) + r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0))} * 1/60}
 
-        C[i] += r6;
-        C[i + 64] += r5;
-        C[i + 128] += r4;
-        C[i + 192] += r3;
-        C[i + 256] += r2;
-        C[i + 320] += r1;
-        C[i + 384] += r0;
+        C[i] += r6;         // C[  0 ~ 126]
+        C[i + 64] += r5;    // C[ 64 ~ 190]
+        C[i + 128] += r4;   // C[128 ~ 254]
+        C[i + 192] += r3;   // C[192 ~ 318]
+        C[i + 256] += r2;   // C[256 ~ 382]
+        C[i + 320] += r1;   // C[320 ~ 446]
+        C[i + 384] += r0;   // C[384 ~ 510]
     }
 }
 
@@ -1114,9 +1115,9 @@ void poly_mul_acc(const int16_t a[LWE_N], const int16_t b[LWE_N],
     toom_cook_4way((uint16_t*)a, (uint16_t*)b, c);
 
     /* reduction */
-    for (i = LWE_N; i < 2 * LWE_N; i++) {
-        res[i - LWE_N] += (c[i - LWE_N] - c[i]);
-    }
+    for (i = LWE_N; i < 2 * LWE_N; i++) {           // SMAUG-T을 Quotient 하는 irred_poly 는 x^256 + 1 이기 때문에
+        res[i - LWE_N] += (c[i - LWE_N] - c[i]);    // c[0~510]에서 c[256 ~ 510] -> -c[0 ~ 254] 이므로
+    }                                               // res[0~255] = c[0 ~ 255] - c[256 ~ 510] 으로 reduction 을 진행
 }
 
 
@@ -1246,11 +1247,11 @@ void matrix_vec_mult_sub(polyvec* r, const polyvec a[MODULE_RANK],
                 al.vec[j].coeffs[k] = a[i].vec[j].coeffs[k] >> _16_LOG_Q;   // A 행렬 mod q(2^10)
 
         memset(&res, 0, sizeof(poly));
-        vec_vec_mult(&res, &al, b);         // 
+        vec_vec_mult(&res, &al, b);             // A * s
         for (j = 0; j < LWE_N; ++j)
-            res.coeffs[j] <<= _16_LOG_Q;
+            res.coeffs[j] <<= _16_LOG_Q;        // e값을 side channel을 막기 위해 <<6 을 진행했기 때문에 A*s 역시 마찬가지로 진행
 
-        poly_sub(&r->vec[i], &r->vec[i], &res);
+        poly_sub(&r->vec[i], &r->vec[i], &res); // e - A*s 즉 b = -As + e 의 값을 얻어줌
     }
 }
 
@@ -1310,25 +1311,25 @@ void Rq_to_bytes(uint8_t bytes[PKPOLY_BYTES], const poly* data) {
 
 #if LOG_Q == 10
     for (i = 0; i < LWE_N; ++i) {
-        bytes[i] = data->coeffs[i] >> 8;
-        tmp[i] = data->coeffs[i] & 0x00c0;
+        bytes[i] = data->coeffs[i] >> 8;        // bytes[i]에 b값의 상위 8bit를 저장
+        tmp[i] = data->coeffs[i] & 0x00c0;      // tmp[i]에 b값의 중위 2bit를 저장    -> 실제로 필요한 값인 10bit만을 저장한다는 의미임
     }
     int16_t buf[DATA_OFFSET * 2] = { 0 };
     for (i = 0; i < 2; ++i) {
         for (j = 0; j < DATA_OFFSET; ++j) {
-            buf[b_idx + j] = tmp[d_idx + j] << 8;
-            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET + j] << 6;
-            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 2 + j] << 4;
-            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 3 + j] << 2;
-            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 4 + j];
-            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 5 + j] >> 2;
-            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 6 + j] >> 4;
-            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 7 + j] >> 6;
-        }
+            buf[b_idx + j]  = tmp[d_idx + j]                   << 8;  // buf[0~15 + 8*b_idx] = tmp[0  ~ 15 + 128*b_idx] 1100 0000 0000 0000 
+            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET + j]     << 6;  // buf[0~15 + 8*b_idx] = tmp[16 ~ 31 + 128*b_idx] 0011 0000 0000 0000
+            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 2 + j] << 4;  // buf[0~15 + 8*b_idx] = tmp[32 ~ 47 + 128*b_idx] 0000 1100 0000 0000
+            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 3 + j] << 2;  // buf[0~15 + 8*b_idx] = tmp[48 ~ 63 + 128*b_idx] 0000 0011 0000 0000
+            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 4 + j];       // buf[0~15 + 8*b_idx] = tmp[64 ~ 79 + 128*b_idx] 0000 0000 1100 0000 
+            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 5 + j] >> 2;  // buf[0~15 + 8*b_idx] = tmp[80 ~ 95 + 128*b_idx] 0000 0000 0011 0000
+            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 6 + j] >> 4;  // buf[0~15 + 8*b_idx] = tmp[96 ~111 + 128*b_idx] 0000 0000 0000 1100
+            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 7 + j] >> 6;  // buf[0~15 + 8*b_idx] = tmp[112~127 + 128*b_idx] 0000 0000 0000 0011
+        }                                                             // 위와 같이 값을 저장
         b_idx += DATA_OFFSET;
         d_idx += DATA_OFFSET * 8;
     }
-    store16_littleendian(bytes + LWE_N, buf, DATA_OFFSET * 2);
+    store16_littleendian(bytes + LWE_N, buf, DATA_OFFSET * 2);        // 저장한 값을 byte 형식으로 bytes[256~319] 에 저장
 #endif
 #if LOG_Q == 11
     for (i = 0; i < LWE_N; ++i) {
@@ -1378,8 +1379,8 @@ void bytes_to_Rq(poly* data, const uint8_t bytes[PKPOLY_BYTES]) {
 
     for (i = 0; i < 2; ++i) {
         for (j = 0; j < DATA_OFFSET; ++j) {
-            tmp[d_idx + j] = buf[b_idx + j] >> 8; // temp[0  ~ 15 + 128*d_i] = buf[0~15 + 16*b_i] >> 8; temp에 buf의 상위 8bit를 저장
-            tmp[d_idx + DATA_OFFSET + j] = buf[b_idx + j] >> 6; // temp[16 ~ 31 + 128*d_i] = buf[0~15 + 16*b_i] >> 6; temp에 buf의 상위 10bit를 저장
+            tmp[d_idx + j]                   = buf[b_idx + j] >> 8; // temp[0  ~ 15 + 128*d_i] = buf[0~15 + 16*b_i] >> 8; temp에 buf의 상위 8bit를 저장
+            tmp[d_idx + DATA_OFFSET + j]     = buf[b_idx + j] >> 6; // temp[16 ~ 31 + 128*d_i] = buf[0~15 + 16*b_i] >> 6; temp에 buf의 상위 10bit를 저장
             tmp[d_idx + DATA_OFFSET * 2 + j] = buf[b_idx + j] >> 4; // temp[32 ~ 47 + 128*d_i] = buf[0~15 + 16*b_i] >> 4; temp에 buf의 상위 12bit를 저장
             tmp[d_idx + DATA_OFFSET * 3 + j] = buf[b_idx + j] >> 2; // temp[48 ~ 63 + 128*d_i] = buf[0~15 + 16*b_i] >> 2; temp에 buf의 상위 14bit를 저장
             tmp[d_idx + DATA_OFFSET * 4 + j] = buf[b_idx + j];      // temp[64 ~ 79 + 128*d_i] = buf[0~15 + 16*b_i];      temp에 buf를 저장
@@ -1391,8 +1392,10 @@ void bytes_to_Rq(poly* data, const uint8_t bytes[PKPOLY_BYTES]) {
         d_idx += DATA_OFFSET * 8;
     }
     for (i = 0; i < LWE_N; ++i)
-        data->coeffs[i] |= tmp[i] & 0x00c0; // coeff[i] = coeff[i] | temp[i] & 0b 0000 0000 1100 0000
-    // 즉, coeff[i] | temp[i]의 7, 6번 bit만 coeff와 | 연산을 진행함
+        data->coeffs[i] |= tmp[i] & 0x00c0; // coeff[i] = coeff[i] | (temp[i] & 0b 0000 0000 1100 0000)
+    // 즉, coeff[i] | temp[i]의 7, 6번 bit를 coeff의 7, 6번 bit로 사용하겠다는 의미
+    // -> 앞에서 data->coeffs[i]의 값은 상위 8bit만을 뽑아서 사용했음,
+    // 여기에서, >> 6을 통해 각 계수의 값을 상위 10bit만을 사용할 것이기 때문에 마지막 2bit를 temp를 통해 채우겠다는 의미임
 #endif
 #if LOG_Q == 11
     for (i = 0; i < LWE_N; ++i)
@@ -1427,11 +1430,11 @@ void bytes_to_Rq(poly* data, const uint8_t bytes[PKPOLY_BYTES]) {
  *
  * Arguments:   - uint8_t *bytes: pointer to output bytes
  *              - poly *data: pointer to input vector of polynomial in Rq
- **************************************************/
+ **************************************************/ 
 void Rq_vec_to_bytes(uint8_t bytes[PKPOLYVEC_BYTES], const polyvec* data) {
     unsigned int i;
     for (i = 0; i < MODULE_RANK; ++i)
-        Rq_to_bytes(bytes + i * PKPOLY_BYTES, &(data->vec[i]));
+        Rq_to_bytes(bytes + i * PKPOLY_BYTES, &(data->vec[i])); // b vector는 10bit 표현이기 때문에 10 * 256 / 8 = 320 byte로 하나의 b module을 저장할 수 있음
 }
 
 /*************************************************
@@ -1745,11 +1748,11 @@ void Sx_to_bytes(uint8_t* bytes, const poly* data) {
     int d_idx = 0;
     for (i = 0; i < LWE_N / 4; ++i) {
         d_idx = i * 4;
-        bytes[i] = (data->coeffs[d_idx] & 0x03) |
-            ((data->coeffs[d_idx + 1] & 0x03) << 2) |
-            ((data->coeffs[d_idx + 2] & 0x03) << 4) |
-            ((data->coeffs[d_idx + 3] & 0x03) << 6);
-    }
+        bytes[i] = (data->coeffs[d_idx] & 0x03) |       // data->coeff[4*idx + 0] & 0011
+            ((data->coeffs[d_idx + 1] & 0x03) << 2) |   // data->coeff[4*idx + 1] & 0011
+            ((data->coeffs[d_idx + 2] & 0x03) << 4) |   // data->coeff[4*idx + 2] & 0011
+            ((data->coeffs[d_idx + 3] & 0x03) << 6);    // data->coeff[4*idx + 3] & 0011 을
+    }                                                   // byte[i] = coef[3] | coef[2] | coef[1] | coef[0] 으로 저장
 }
 
 /*************************************************
@@ -1981,10 +1984,10 @@ int addGaussianError(poly* op, const uint8_t* seed) {
 void addGaussianErrorVec(polyvec* op, const uint8_t seed[CRYPTO_BYTES]) {
     unsigned int i;
     uint8_t extseed[CRYPTO_BYTES + 1] = { 0 };
-    memcpy(extseed, seed, CRYPTO_BYTES);
+    memcpy(extseed, seed, CRYPTO_BYTES);            // extseed[0~31] = seed[0~31]
     for (i = 0; i < MODULE_RANK; ++i) {
-        extseed[CRYPTO_BYTES] = MODULE_RANK * i;
-        addGaussianError(&(op->vec[i]), extseed);
+        extseed[CRYPTO_BYTES] = MODULE_RANK * i;    // extseed[32] = i * MODULE_RANK
+        addGaussianError(&(op->vec[i]), extseed);   // Error값 e 생성, 이 때 side channel attack을 막기 위해 [-3,3]이 아닌 <<6 을 진행한 {-192, -128, -64, 0, 64, 128, 192}으로 e 생성
     }
 }
 
@@ -2055,14 +2058,15 @@ int hwt(int16_t* res, const uint8_t* seed) {
     shake256_absorb_once(&state, seed, CRYPTO_BYTES + 2);
 
     // only executed once with overwhelming probability:
-    shake256_squeeze(buf, HWTSEEDBYTES, &state);
-    load16_littleendian(rand, HWTSEEDBYTES / 2, buf);
-    if (rejsampling_mod(si, rand))
-    {
-        return -1;
-    }
+    shake256_squeeze(buf, HWTSEEDBYTES, &state);        // sampling을 위한 값을 seed를 통해 생성
 
-    shake256_squeeze(sign, LWE_N / 4, &state);
+    load16_littleendian(rand, HWTSEEDBYTES / 2, buf);   // sampling 할 값을(uint8_t)  (int16_t) 형식으로 변경
+    if (rejsampling_mod(si, rand))                      // rejection sampling을 진행
+    {
+        return -1;                                      // 이 때, rejection sampling을 하는 배열은 308개의 배열인데, 해당하는 배열로 원하는 값을 sampling하지 못하면 
+    }                                                   // 사용하는 seed값을 변경하기 위해서 return -1
+
+    shake256_squeeze(sign, LWE_N / 4, &state);          // hamming weight의 결과 값을 위한 sign 값을 생성
 
     int16_t t0;
     int16_t c0 = LWE_N - HS;        // 256 - 70 = 186
@@ -2179,13 +2183,13 @@ void computeC2(poly* c2, const uint8_t delta[DELTA_BYTES], const polyvec* b,
 void genAx(polyvec A[MODULE_RANK], const uint8_t seed[PKSEED_BYTES]) {
     unsigned int i, j;
     uint8_t buf[PKPOLY_BYTES] = { 0 }, tmpseed[PKSEED_BYTES + 2];
-    memcpy(tmpseed, seed, PKSEED_BYTES);
-    for (i = 0; i < MODULE_RANK; i++) {
+    memcpy(tmpseed, seed, PKSEED_BYTES);                            // tmpseed[0~31] = seed
+    for (i = 0; i < MODULE_RANK; i++) {                             
         for (j = 0; j < MODULE_RANK; j++) {
-            tmpseed[32] = i;
+            tmpseed[32] = i;                                        
             tmpseed[33] = j;
-            shake128(buf, PKPOLY_BYTES, tmpseed, PKSEED_BYTES + 2);
-            bytes_to_Rq(&A[i].vec[j], buf);
+            shake128(buf, PKPOLY_BYTES, tmpseed, PKSEED_BYTES + 2); // buf에 값을 생성해서
+            bytes_to_Rq(&A[i].vec[j], buf);                         // A에 값을 저장, (상위 10bit -> 실제 A, 하위 6bit -> 의미 없는 값)
         }
     }
 }
@@ -2205,7 +2209,7 @@ void genAx(polyvec A[MODULE_RANK], const uint8_t seed[PKSEED_BYTES]) {
 void genBx(polyvec* b, const polyvec A[MODULE_RANK], const polyvec* s,
     const uint8_t e_seed[CRYPTO_BYTES]) {
     // b = e
-    addGaussianErrorVec(b, e_seed);
+    addGaussianErrorVec(b, e_seed); // 생성한 seed[0~31]을 통해 dGaussian 함수로 에러값 생성
 
     // b = -a * s + e
     matrix_vec_mult_sub(b, A, s);
@@ -2227,13 +2231,13 @@ void genBx(polyvec* b, const polyvec A[MODULE_RANK], const polyvec* s,
 void genSx_vec(secret_key* sk, const uint8_t seed[CRYPTO_BYTES]) {
     unsigned int i, j;
     uint8_t extseed[CRYPTO_BYTES + 2] = { 0 };
-    memcpy(extseed, seed, CRYPTO_BYTES);            // extseed에 seed를 저장
+    memcpy(extseed, seed, CRYPTO_BYTES);            // extseed에 seed를 저장                               // extseed[0~31] = seed[0~31]
 
     for (i = 0; i < MODULE_RANK; ++i) {
-        extseed[CRYPTO_BYTES] = i * MODULE_RANK;    // seed의 바로 다음 byte를 module_rank * i 로 저장
+        extseed[CRYPTO_BYTES] = i * MODULE_RANK;    // seed의 바로 다음 byte를 module_rank * i 로 저장      // extseed[32] = module_rank * i
         j = 0;
         do {
-            extseed[CRYPTO_BYTES + 1] = j;          // extseed의 마지막 byte를 j라고 두고,
+            extseed[CRYPTO_BYTES + 1] = j;          // extseed의 마지막 byte를 j라고 두고,                  // extseed[33] = j
             j += 1;                                 // 해당 j값을 늘려가면서 조건에 맞는 extseed값을 찾아줌
         } while (hwt(sk->vec[i].coeffs, extseed));
     }
@@ -2251,11 +2255,12 @@ void genSx_vec(secret_key* sk, const uint8_t seed[CRYPTO_BYTES]) {
  **************************************************/
 void genPubkey(public_key* pk, const secret_key* sk,
     const uint8_t err_seed[CRYPTO_BYTES]) {
-    genAx(pk->A, pk->seed);
+    genAx(pk->A, pk->seed);                         // seed[32~63]을 통해 A 행렬 생성
+                                                    // 생성한 A 행렬은 10bit로 modulo 되어 있지 않고 16bit 표현임, 이후 genBx 함수를 통해서 modulo 연산이 진행됨
 
     memset(&(pk->b), 0, sizeof(uint16_t) * LWE_N);
     // Initialized at addGaussian, Unnecessary
-    genBx(&(pk->b), pk->A, sk, err_seed);
+    genBx(&(pk->b), pk->A, sk, err_seed);           // b = -As + e
 }
 
 
@@ -2339,8 +2344,8 @@ void load_from_file_sk(uint8_t* sk, const char* file_path, const int isPKE) {
 /*----------------------------------------------------------------------------*/
 
 void save_to_string_pk(uint8_t* output, const public_key* pk) {
-    memcpy(output, pk->seed, sizeof(uint8_t) * PKSEED_BYTES);
-    Rq_vec_to_bytes(output + PKSEED_BYTES, &(pk->b));
+    memcpy(output, pk->seed, sizeof(uint8_t) * PKSEED_BYTES);   // pk[0 ~ 31] = seed[32~63] 로 A행렬 정보 저장
+    Rq_vec_to_bytes(output + PKSEED_BYTES, &(pk->b));           // pk[32~351] = b vector를 byte 형식으로 저장
 }
 
 void save_to_file_pk(char* file_path, const uint8_t* pk) {
@@ -2426,21 +2431,21 @@ void indcpa_keypair(uint8_t pk[PUBLICKEY_BYTES],
     memset(&sk_tmp, 0, sizeof(secret_key));
 
     uint8_t seed[CRYPTO_BYTES + PKSEED_BYTES] = { 0 };
-    randombytes(seed, CRYPTO_BYTES);
+    randombytes(seed, CRYPTO_BYTES);                            // seed[0~31] 에 대해 random 값 생성
 #if CRYPTO_BYTES + PKSEED_BYTES != 64
 #error "This implementation assumes CRYPTO_BYTES + PKSEED_BYTES to be 64"
 #endif
-    sha3_512(seed, seed, CRYPTO_BYTES);
+    sha3_512(seed, seed, CRYPTO_BYTES);                         // 위에서 생성한 random값을 통해 seed[0~63] 생성
 
-    genSx_vec(&sk_tmp, seed);
+    genSx_vec(&sk_tmp, seed);                                   // 생성한 seed[0~31]을 통해 비밀값 s 생성
 
-    memcpy(&pk_tmp.seed, seed + CRYPTO_BYTES, PKSEED_BYTES);
-    genPubkey(&pk_tmp, &sk_tmp, seed);
+    memcpy(&pk_tmp.seed, seed + CRYPTO_BYTES, PKSEED_BYTES);    // pk_tmp.seed에에 생성한 seed[32~63]을 저장
+    genPubkey(&pk_tmp, &sk_tmp, seed);                          // seed[32~63]을 통해 A를 생성, 생성한 s와 결합하여 b = -As + e를 생성
 
-    memset(pk, 0, PUBLICKEY_BYTES);
+    memset(pk, 0, PUBLICKEY_BYTES);                             
     memset(sk, 0, PKE_SECRETKEY_BYTES);
-    save_to_string_pk(pk, &pk_tmp);
-    save_to_string_sk(sk, &sk_tmp);
+    save_to_string_pk(pk, &pk_tmp);                             // pk = A seed(seed[32~63]) | b  로 저장
+    save_to_string_sk(sk, &sk_tmp);                             // sk = s
 }
 
 /*************************************************
@@ -2540,10 +2545,10 @@ void indcpa_dec(uint8_t delta[DELTA_BYTES],
 
 
 void crypto_kem_keypair(uint8_t* pk, uint8_t* sk) {
-    indcpa_keypair(pk, sk);
-    randombytes(sk + PKE_SECRETKEY_BYTES, T_BYTES);
-    for (int i = 0; i < PUBLICKEY_BYTES; i++)
-        sk[i + PKE_SECRETKEY_BYTES + T_BYTES] = pk[i];
+    indcpa_keypair(pk, sk);                             // PKE keygen 스킴을 통해 pk, sk 생성
+    randombytes(sk + PKE_SECRETKEY_BYTES, T_BYTES);     // 암묵적 거부를 위한 random값 t 생성
+    for (int i = 0; i < PUBLICKEY_BYTES; i++)           
+        sk[i + PKE_SECRETKEY_BYTES + T_BYTES] = pk[i];  // sk = sk | t | pk 로 저장
 }
 
 int crypto_kem_enc(uint8_t* ctxt, uint8_t* ss, const uint8_t* pk) {
