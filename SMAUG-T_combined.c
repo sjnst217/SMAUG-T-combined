@@ -16,6 +16,16 @@
 #define NROUNDS 24
 #define ROL(a, offset) ((a << offset) ^ (a >> (64 - offset)))
 
+#define SCHB_N 16
+
+#define N_RES (LWE_N << 1)
+#define N_SB (LWE_N >> 2)       // LWE_N : 256 = 2^8 -> 2^6
+#define N_SB_RES (2 * N_SB - 1)
+
+#define OVERFLOWING_MUL(X, Y) ((uint16_t)((uint32_t)(X) * (uint32_t)(Y)))
+
+#define KARATSUBA_N 64
+
 
 #define RAND 0
 
@@ -64,15 +74,7 @@ void randombytes(uint8_t* buf, int len)
 }
 #endif
 
-/*************************************************
- * Name:        load64
- *
- * Description: Load 8 bytes into uint64_t in little-endian order
- *
- * Arguments:   - const uint8_t *x: pointer to input byte array
- *
- * Returns the loaded 64-bit unsigned integer
- **************************************************/
+
 static uint64_t load64(const uint8_t x[8]) {
     unsigned int i;
     uint64_t r = 0;
@@ -83,21 +85,61 @@ static uint64_t load64(const uint8_t x[8]) {
     return r;
 }
 
-/*************************************************
- * Name:        store64
- *
- * Description: Store a 64-bit integer to array of 8 bytes in little-endian
- *order
- *
- * Arguments:   - uint8_t *x: pointer to the output byte array (allocated)
- *              - uint64_t u: input 64-bit unsigned integer
- **************************************************/
 static void store64(uint8_t x[8], uint64_t u) {
     unsigned int i;
 
     for (i = 0; i < 8; i++)
         x[i] = u >> 8 * i;
 }
+
+static void load16_littleendian(int16_t* out, const int outlen,
+    const uint8_t* in) {
+    int pos = 0;
+    for (int i = 0; i < outlen; ++i) {
+        out[i] = ((int16_t)(in[pos])) | ((int16_t)(in[pos + 1]) << 8);
+        pos += 2;
+    }
+}
+
+static void store16_littleendian(uint8_t* out, const int16_t* in,
+    const int inlen) {
+    int pos = 0;
+    for (int i = 0; i < inlen; ++i) {
+        out[pos] = in[i];
+        out[pos + 1] = in[i] >> 8;
+        pos += 2;
+    }
+}
+
+static uint32_t load24_littleendian(const uint8_t x[3]) {
+    uint32_t r;
+    r = (uint32_t)x[0];
+    r |= (uint32_t)x[1] << 8;
+    r |= (uint32_t)x[2] << 16;
+    return r;
+}
+static uint32_t load32_littleendian(const uint8_t x[4]) {
+    uint32_t r;
+    r = (uint32_t)x[0];
+    r |= (uint32_t)x[1] << 8;
+    r |= (uint32_t)x[2] << 16;
+    r |= (uint32_t)x[3] << 24;
+    return r;
+}
+
+static void load64_littleendian(uint64_t* out, const unsigned int outlen,
+    const uint8_t* in) {
+    unsigned int i, pos = 0;
+    for (i = 0; i < outlen; ++i) {
+        out[i] =
+            ((uint64_t)(in[pos])) | ((uint64_t)(in[pos + 1]) << 8) |
+            ((uint64_t)(in[pos + 2]) << 16) | ((uint64_t)(in[pos + 3]) << 24) |
+            ((uint64_t)(in[pos + 4]) << 32) | ((uint64_t)(in[pos + 5]) << 40) |
+            ((uint64_t)(in[pos + 6]) << 48) | ((uint64_t)(in[pos + 7]) << 56);
+        pos += 8;
+    }
+}
+
 
 /* Keccak round constants */
 const uint64_t KeccakF_RoundConstants[NROUNDS] = {
@@ -114,13 +156,6 @@ const uint64_t KeccakF_RoundConstants[NROUNDS] = {
     (uint64_t)0x8000000080008081ULL, (uint64_t)0x8000000000008080ULL,
     (uint64_t)0x0000000080000001ULL, (uint64_t)0x8000000080008008ULL };
 
-/*************************************************
- * Name:        KeccakF1600_StatePermute
- *
- * Description: The Keccak F1600 Permutation
- *
- * Arguments:   - uint64_t *state: pointer to input/output Keccak state
- **************************************************/
 static void KeccakF1600_StatePermute(uint64_t state[25]) {
     int round;
 
@@ -384,32 +419,12 @@ static void KeccakF1600_StatePermute(uint64_t state[25]) {
     state[24] = Asu;
 }
 
-/*************************************************
- * Name:        keccak_init
- *
- * Description: Initializes the Keccak state.
- *
- * Arguments:   - uint64_t *s: pointer to Keccak state
- **************************************************/
 static void keccak_init(uint64_t s[25]) {
     unsigned int i;
     for (i = 0; i < 25; i++)
         s[i] = 0;
 }
 
-/*************************************************
- * Name:        keccak_absorb
- *
- * Description: Absorb step of Keccak; incremental.
- *
- * Arguments:   - uint64_t *s: pointer to Keccak state
- *              - unsigned int pos: position in current block to be absorbed
- *              - unsigned int r: rate in bytes (e.g., 168 for SHAKE128)
- *              - const uint8_t *in: pointer to input to be absorbed into s
- *              - size_t inlen: length of input in bytes
- *
- * Returns new position pos in current block
- **************************************************/
 static unsigned int keccak_absorb(uint64_t s[25], unsigned int pos,
     unsigned int r, const uint8_t* in,
     size_t inlen) {
@@ -429,38 +444,12 @@ static unsigned int keccak_absorb(uint64_t s[25], unsigned int pos,
     return i;
 }
 
-/*************************************************
- * Name:        keccak_finalize
- *
- * Description: Finalize absorb step.
- *
- * Arguments:   - uint64_t *s: pointer to Keccak state
- *              - unsigned int pos: position in current block to be absorbed
- *              - unsigned int r: rate in bytes (e.g., 168 for SHAKE128)
- *              - uint8_t p: domain separation byte
- **************************************************/
 static void keccak_finalize(uint64_t s[25], unsigned int pos, unsigned int r,
     uint8_t p) {
     s[pos / 8] ^= (uint64_t)p << 8 * (pos % 8);
     s[r / 8 - 1] ^= 1ULL << 63;
 }
 
-/*************************************************
- * Name:        keccak_squeeze
- *
- * Description: Squeeze step of Keccak. Squeezes arbitratrily many bytes.
- *              Modifies the state. Can be called multiple times to keep
- *              squeezing, i.e., is incremental.
- *
- * Arguments:   - uint8_t *out: pointer to output
- *              - size_t outlen: number of bytes to be squeezed (written to out)
- *              - uint64_t *s: pointer to input/output Keccak state
- *              - unsigned int pos: number of bytes in current block already
- *squeezed
- *              - unsigned int r: rate in bytes (e.g., 168 for SHAKE128)
- *
- * Returns new position pos in current block
- **************************************************/
 static unsigned int keccak_squeeze(uint8_t* out, size_t outlen, uint64_t s[25],
     unsigned int pos, unsigned int r) {
     
@@ -480,19 +469,6 @@ static unsigned int keccak_squeeze(uint8_t* out, size_t outlen, uint64_t s[25],
     return pos;
 }
 
-/*************************************************
- * Name:        keccak_absorb_once
- *
- * Description: Absorb step of Keccak;
- *              non-incremental, starts by zeroeing the state.
- *
- * Arguments:   - uint64_t *s: pointer to (uninitialized) output Keccak state
- *              - unsigned int r: rate in bytes (e.g., 168 for SHAKE128)
- *              - const uint8_t *in: pointer to input to be absorbed into s
- *              - size_t inlen: length of input in bytes
- *              - uint8_t p: domain-separation byte for different Keccak-derived
- *functions
- **************************************************/
 static void keccak_absorb_once(uint64_t s[25], unsigned int r,
     const uint8_t* in, size_t inlen, uint8_t p) {
     unsigned int i;
@@ -515,20 +491,6 @@ static void keccak_absorb_once(uint64_t s[25], unsigned int r,
     s[(r - 1) / 8] ^= 1ULL << 63;
 }
 
-/*************************************************
- * Name:        keccak_squeezeblocks
- *
- * Description: Squeeze step of Keccak. Squeezes full blocks of r bytes each.
- *              Modifies the state. Can be called multiple times to keep
- *              squeezing, i.e., is incremental. Assumes zero bytes of current
- *              block have already been squeezed.
- *
- * Arguments:   - uint8_t *out: pointer to output blocks
- *              - size_t nblocks: number of blocks to be squeezed (written to
- *out)
- *              - uint64_t *s: pointer to input/output Keccak state
- *              - unsigned int r: rate in bytes (e.g., 168 for SHAKE128)
- **************************************************/
 static void keccak_squeezeblocks(uint8_t* out, size_t nblocks, uint64_t s[25],
     unsigned int r) {
     unsigned int i;
@@ -542,192 +504,64 @@ static void keccak_squeezeblocks(uint8_t* out, size_t nblocks, uint64_t s[25],
     }
 }
 
-/*************************************************
- * Name:        shake128_init
- *
- * Description: Initilizes Keccak state for use as SHAKE128 XOF
- *
- * Arguments:   - keccak_state *state: pointer to (uninitialized) Keccak state
- **************************************************/
 void shake128_init(keccak_state* state) {
     keccak_init(state->s);
     state->pos = 0;
 }
 
-/*************************************************
- * Name:        shake128_absorb
- *
- * Description: Absorb step of the SHAKE128 XOF; incremental.
- *
- * Arguments:   - keccak_state *state: pointer to (initialized) output Keccak
- *state
- *              - const uint8_t *in: pointer to input to be absorbed into s
- *              - size_t inlen: length of input in bytes
- **************************************************/
 void shake128_absorb(keccak_state* state, const uint8_t* in, size_t inlen) {
     state->pos = keccak_absorb(state->s, state->pos, SHAKE128_RATE, in, inlen);
 }
 
-/*************************************************
- * Name:        shake128_finalize
- *
- * Description: Finalize absorb step of the SHAKE128 XOF.
- *
- * Arguments:   - keccak_state *state: pointer to Keccak state
- **************************************************/
 void shake128_finalize(keccak_state* state) {
     keccak_finalize(state->s, state->pos, SHAKE128_RATE, 0x1F);
     state->pos = SHAKE128_RATE;
 }
 
-/*************************************************
- * Name:        shake128_squeeze
- *
- * Description: Squeeze step of SHAKE128 XOF. Squeezes arbitraily many
- *              bytes. Can be called multiple times to keep squeezing.
- *
- * Arguments:   - uint8_t *out: pointer to output blocks
- *              - size_t outlen : number of bytes to be squeezed (written to
- *output)
- *              - keccak_state *s: pointer to input/output Keccak state
- **************************************************/
 void shake128_squeeze(uint8_t* out, size_t outlen, keccak_state* state) {
     state->pos =
         keccak_squeeze(out, outlen, state->s, state->pos, SHAKE128_RATE);
 }
 
-/*************************************************
- * Name:        shake128_absorb_once
- *
- * Description: Initialize, absorb into and finalize SHAKE128 XOF;
- *non-incremental.
- *
- * Arguments:   - keccak_state *state: pointer to (uninitialized) output Keccak
- *state
- *              - const uint8_t *in: pointer to input to be absorbed into s
- *              - size_t inlen: length of input in bytes
- **************************************************/
 void shake128_absorb_once(keccak_state* state, const uint8_t* in,
     size_t inlen) {
     keccak_absorb_once(state->s, SHAKE128_RATE, in, inlen, 0x1F);
     state->pos = SHAKE128_RATE;
 }
 
-/*************************************************
- * Name:        shake128_squeezeblocks
- *
- * Description: Squeeze step of SHAKE128 XOF. Squeezes full blocks of
- *              SHAKE128_RATE bytes each. Can be called multiple times
- *              to keep squeezing. Assumes new block has not yet been
- *              started (state->pos = SHAKE128_RATE).
- *
- * Arguments:   - uint8_t *out: pointer to output blocks
- *              - size_t nblocks: number of blocks to be squeezed (written to
- *output)
- *              - keccak_state *s: pointer to input/output Keccak state
- **************************************************/
 void shake128_squeezeblocks(uint8_t* out, size_t nblocks, keccak_state* state) {
     keccak_squeezeblocks(out, nblocks, state->s, SHAKE128_RATE);
 }
 
-/*************************************************
- * Name:        shake256_init
- *
- * Description: Initilizes Keccak state for use as SHAKE256 XOF
- *
- * Arguments:   - keccak_state *state: pointer to (uninitialized) Keccak state
- **************************************************/
 void shake256_init(keccak_state* state) {
     keccak_init(state->s);
     state->pos = 0;
 }
 
-/*************************************************
- * Name:        shake256_absorb
- *
- * Description: Absorb step of the SHAKE256 XOF; incremental.
- *
- * Arguments:   - keccak_state *state: pointer to (initialized) output Keccak
- *state
- *              - const uint8_t *in: pointer to input to be absorbed into s
- *              - size_t inlen: length of input in bytes
- **************************************************/
 void shake256_absorb(keccak_state* state, const uint8_t* in, size_t inlen) {
     state->pos = keccak_absorb(state->s, state->pos, SHAKE256_RATE, in, inlen);
 }
 
-/*************************************************
- * Name:        shake256_finalize
- *
- * Description: Finalize absorb step of the SHAKE256 XOF.
- *
- * Arguments:   - keccak_state *state: pointer to Keccak state
- **************************************************/
 void shake256_finalize(keccak_state* state) {
     keccak_finalize(state->s, state->pos, SHAKE256_RATE, 0x1F);
     state->pos = SHAKE256_RATE;
 }
 
-/*************************************************
- * Name:        shake256_squeeze
- *
- * Description: Squeeze step of SHAKE256 XOF. Squeezes arbitraily many
- *              bytes. Can be called multiple times to keep squeezing.
- *
- * Arguments:   - uint8_t *out: pointer to output blocks
- *              - size_t outlen : number of bytes to be squeezed (written to
- *output)
- *              - keccak_state *s: pointer to input/output Keccak state
- **************************************************/
 void shake256_squeeze(uint8_t* out, size_t outlen, keccak_state* state) {
     state->pos =
         keccak_squeeze(out, outlen, state->s, state->pos, SHAKE256_RATE);
 }
 
-/*************************************************
- * Name:        shake256_absorb_once
- *
- * Description: Initialize, absorb into and finalize SHAKE256 XOF;
- *non-incremental.
- *
- * Arguments:   - keccak_state *state: pointer to (uninitialized) output Keccak
- *state
- *              - const uint8_t *in: pointer to input to be absorbed into s
- *              - size_t inlen: length of input in bytes
- **************************************************/
 void shake256_absorb_once(keccak_state* state, const uint8_t* in,
     size_t inlen) {
     keccak_absorb_once(state->s, SHAKE256_RATE, in, inlen, 0x1F);
     state->pos = SHAKE256_RATE;
 }
 
-/*************************************************
- * Name:        shake256_squeezeblocks
- *
- * Description: Squeeze step of SHAKE256 XOF. Squeezes full blocks of
- *              SHAKE256_RATE bytes each. Can be called multiple times
- *              to keep squeezing. Assumes next block has not yet been
- *              started (state->pos = SHAKE256_RATE).
- *
- * Arguments:   - uint8_t *out: pointer to output blocks
- *              - size_t nblocks: number of blocks to be squeezed (written to
- *output)
- *              - keccak_state *s: pointer to input/output Keccak state
- **************************************************/
 void shake256_squeezeblocks(uint8_t* out, size_t nblocks, keccak_state* state) {
     keccak_squeezeblocks(out, nblocks, state->s, SHAKE256_RATE);
 }
 
-/*************************************************
- * Name:        shake128
- *
- * Description: SHAKE128 XOF with non-incremental API
- *
- * Arguments:   - uint8_t *out: pointer to output
- *              - size_t outlen: requested output length in bytes
- *              - const uint8_t *in: pointer to input
- *              - size_t inlen: length of input in bytes
- **************************************************/
 void shake128(uint8_t* out, size_t outlen, const uint8_t* in, size_t inlen) {
     size_t nblocks;
     keccak_state state;
@@ -740,16 +574,6 @@ void shake128(uint8_t* out, size_t outlen, const uint8_t* in, size_t inlen) {
     shake128_squeeze(out, outlen, &state);
 }
 
-/*************************************************
- * Name:        shake256
- *
- * Description: SHAKE256 XOF with non-incremental API
- *
- * Arguments:   - uint8_t *out: pointer to output
- *              - size_t outlen: requested output length in bytes
- *              - const uint8_t *in: pointer to input
- *              - size_t inlen: length of input in bytes
- **************************************************/
 void shake256(uint8_t* out, size_t outlen, const uint8_t* in, size_t inlen) {
     size_t nblocks;
     keccak_state state;
@@ -762,15 +586,6 @@ void shake256(uint8_t* out, size_t outlen, const uint8_t* in, size_t inlen) {
     shake256_squeeze(out, outlen, &state);
 }
 
-/*************************************************
- * Name:        sha3_256
- *
- * Description: SHA3-256 with non-incremental API
- *
- * Arguments:   - uint8_t *h: pointer to output (32 bytes)
- *              - const uint8_t *in: pointer to input
- *              - size_t inlen: length of input in bytes
- **************************************************/
 void sha3_256(uint8_t h[32], const uint8_t* in, size_t inlen) {
     unsigned int i;
     uint64_t s[25];
@@ -781,15 +596,6 @@ void sha3_256(uint8_t h[32], const uint8_t* in, size_t inlen) {
         store64(h + 8 * i, s[i]);
 }
 
-/*************************************************
- * Name:        sha3_512
- *
- * Description: SHA3-512 with non-incremental API
- *
- * Arguments:   - uint8_t *h: pointer to output (64 bytes)
- *              - const uint8_t *in: pointer to input
- *              - size_t inlen: length of input in bytes
- **************************************************/
 void sha3_512(uint8_t h[64], const uint8_t* in, size_t inlen) {
     unsigned int i;
     uint64_t s[25];
@@ -802,17 +608,7 @@ void sha3_512(uint8_t h[64], const uint8_t* in, size_t inlen) {
 
 
 
-/*************************************************
- * Name:        verify
- *
- * Description: Compare two arrays for equality in constant time.
- *
- * Arguments:   const uint8_t *a: pointer to first byte array
- *              const uint8_t *b: pointer to second byte array
- *              size_t len:       length of the byte arrays
- *
- * Returns 0 if the byte arrays are equal, 1 otherwise
- **************************************************/
+
 int verify(const uint8_t* a, const uint8_t* b, size_t len) {
     size_t i;
     uint8_t r = 0;
@@ -824,19 +620,6 @@ int verify(const uint8_t* a, const uint8_t* b, size_t len) {
     return ((-(uint64_t)(r))) >> 63;
 }
 
-/*************************************************
- * Name:        cmov
- *
- * Description: Copy len bytes from x to r if b is 1;
- *              don't modify x if b is 0. Requires b to be in {0,1};
- *              assumes two's complement representation of negative integers.
- *              Runs in constant time.
- *
- * Arguments:   uint8_t *r:       pointer to output byte array
- *              const uint8_t *x: pointer to input byte array
- *              size_t len:       Amount of bytes to be copied
- *              uint8_t b:        Condition bit; has to be in {0,1}
- **************************************************/
 void cmov(uint8_t* r, const uint8_t* x, size_t len, uint8_t b) {
     size_t i;
 
@@ -847,15 +630,7 @@ void cmov(uint8_t* r, const uint8_t* x, size_t len, uint8_t b) {
 
 
 
-#define SCHB_N 16
 
-#define N_RES (LWE_N << 1)
-#define N_SB (LWE_N >> 2)       // LWE_N : 256 = 2^8 -> 2^6
-#define N_SB_RES (2 * N_SB - 1)
-
-#define OVERFLOWING_MUL(X, Y) ((uint16_t)((uint32_t)(X) * (uint32_t)(Y)))
-
-#define KARATSUBA_N 64
 static void karatsuba_simple(const uint16_t* a_1, const uint16_t* b_1,
     uint16_t* result_final) {
     uint16_t d01[KARATSUBA_N / 2 - 1];
@@ -1120,67 +895,24 @@ void poly_mul_acc(const int16_t a[LWE_N], const int16_t b[LWE_N],
     }                                               // res[0~255] = c[0 ~ 255] - c[256 ~ 510] 으로 reduction 을 진행
 }
 
-
-
-
-/*************************************************
- * Name:        poly_add
- *
- * Description: Add two polynomials; no modular reduction is performed
- *
- * Arguments: - poly *r: pointer to output polynomial
- *            - poly *a: pointer to first input polynomial
- *            - poly *b: pointer to second input polynomial
- **************************************************/
 void poly_add(poly* r, const poly* a, const poly* b) {
     unsigned int i;
     for (i = 0; i < LWE_N; i++)
         r->coeffs[i] = a->coeffs[i] + b->coeffs[i];
 }
 
-/*************************************************
- * Name:        poly_sub
- *
- * Description: Subtract two polynomials; no modular reduction is performed
- *
- * Arguments: - poly *r: pointer to output polynomial
- *            - poly *a: pointer to first input polynomial
- *            - poly *b: pointer to second input polynomial
- **************************************************/
 void poly_sub(poly* r, const poly* a, const poly* b) {
     unsigned int i;
     for (i = 0; i < LWE_N; i++)
         r->coeffs[i] = a->coeffs[i] - b->coeffs[i];
 }
 
-/*************************************************
- * Name:        vec_vec_mult
- *
- * Description: Two vector of polynomials are multiplied in the NTT domain for
- *              q0 and q1, then transform back with inverse NTT into Rq0 and
- *              Rq1, and finally combined using Chinese Remainder Theorem (CRT).
- *
- * Arguments:   - poly *r: pointer to output polynomial
- *              - polyvec *a: pointer to input vector of polynomials
- *              - polyvec *b: pointer to input vector of polynomials
- **************************************************/
 void vec_vec_mult(poly* r, const polyvec* a, const polyvec* b) {
     unsigned int i;
     for (i = 0; i < MODULE_RANK; i++)
         poly_mul_acc(a->vec[i].coeffs, b->vec[i].coeffs, r->coeffs);
 }
 
-/*************************************************
- * Name:        vec_vec_mult_add
- *
- * Description: Multiply two vectors of polynomials and add the result to output
- *              polynomial
- *
- * Arguments:   - poly *r: pointer to output polynomial
- *              - polyvec *a: pointer to input vector of polynomials
- *              - polyvec *b: pointer to input vector of polynomials
- *              - uint8_t mod: modulus (16-LOG_P) or (16-LOG_Q)
- **************************************************/
 void vec_vec_mult_add(poly* r, const polyvec* a, const polyvec* b,
     const uint8_t mod) {
     unsigned int i, j;
@@ -1199,16 +931,6 @@ void vec_vec_mult_add(poly* r, const polyvec* a, const polyvec* b,
     poly_add(r, r, &res);
 }
 
-/*************************************************
- * Name:        matrix_vec_mult_add
- *
- * Description: Transpose the matrix of polynomial and multiply it with the
- *              vector of polynomials.
- *
- * Arguments:   - polyvec *r: pointer to output vector of polynomials
- *              - polyvec *a: pointer to input matrix of polynomials
- *              - polyvec *b: pointer to input vector of polynomials
- **************************************************/
 void matrix_vec_mult_add(polyvec* r, const polyvec a[MODULE_RANK],
     const polyvec* b) {
     unsigned int i, j, k;
@@ -1225,16 +947,6 @@ void matrix_vec_mult_add(polyvec* r, const polyvec a[MODULE_RANK],
     }
 }
 
-/*************************************************
- * Name:        matrix_vec_mult_sub
- *
- * Description: Multiply the matrix of polynomial with the vector of polynomial
- *              and subtract the result to output vector of polynomials.
- *
- * Arguments:   - polyvec *r: pointer to in/output vector of polynomials
- *              - polyvec *a: pointer to input matrix of polynomials
- *              - polyvec *b: pointer to input vector of polynomials
- **************************************************/
 void matrix_vec_mult_sub(polyvec* r, const polyvec a[MODULE_RANK],
     const polyvec* b) {
     unsigned int i, j, k;
@@ -1257,53 +969,7 @@ void matrix_vec_mult_sub(polyvec* r, const polyvec a[MODULE_RANK],
 
 
 
-/*************************************************
- * Name:        store16_littleendian
- *
- * Description: store a 16-bit integer into 2 bytes
- *              in little-endian order
- *
- * Arguments:   - uint8_t *out: pointer to output byte array
- *              - int16_t *in: pointer to input int16_t array
- *              - int inlen: input length
- **************************************************/
-static void store16_littleendian(uint8_t* out, const int16_t* in,
-    const int inlen) {
-    int pos = 0;
-    for (int i = 0; i < inlen; ++i) {
-        out[pos] = in[i];
-        out[pos + 1] = in[i] >> 8;
-        pos += 2;
-    }
-}
 
-/*************************************************
- * Name:        load16_littleendian
- *
- * Description: load 2 bytes into a 16-bit integer
- *              in little-endian order
- *
- * Arguments:   - int16_t *out: pointer to output int16_t array
- *              - int outlen: output length
- *              - uint8_t *in: pointer to input byte array
- **************************************************/
-static void load16_littleendian(int16_t* out, const int outlen,
-    const uint8_t* in) {
-    int pos = 0;
-    for (int i = 0; i < outlen; ++i) {
-        out[i] = ((int16_t)(in[pos])) | ((int16_t)(in[pos + 1]) << 8);
-        pos += 2;
-    }
-}
-
-/*************************************************
- * Name:        Rq_to_bytes
- *
- * Description: Transform to bytes array from polynomial in Rq
- *
- * Arguments:   - uint8_t *bytes: pointer to output bytes
- *              - poly *data: pointer to input polynomial in Rq
- **************************************************/
 void Rq_to_bytes(uint8_t bytes[PKPOLY_BYTES], const poly* data) {
     int16_t tmp[LWE_N] = { 0 };
     int b_idx = 0, d_idx = 0;
@@ -1355,15 +1021,6 @@ void Rq_to_bytes(uint8_t bytes[PKPOLY_BYTES], const poly* data) {
 #endif
 }
 
-/*************************************************
- * Name:        bytes_to_Rq
- *
- * Description: Transform to polynomial in Rq from bytes array
- *
- * Arguments:   - poly *data: pointer to output polynomial in Rq
- *              - uint8_t *bytes: pointer to input bytes
- *              - size_t dlen: date length
- **************************************************/
 void bytes_to_Rq(poly* data, const uint8_t bytes[PKPOLY_BYTES]) {
     int16_t tmp[LWE_N] = { 0 };
     int b_idx = 0, d_idx = 0;
@@ -1423,42 +1080,18 @@ void bytes_to_Rq(poly* data, const uint8_t bytes[PKPOLY_BYTES]) {
 #endif
 }
 
-/*************************************************
- * Name:        Rq_vec_to_bytes
- *
- * Description: Transform to bytes array from a vector of  polynomial in Rq
- *
- * Arguments:   - uint8_t *bytes: pointer to output bytes
- *              - poly *data: pointer to input vector of polynomial in Rq
- **************************************************/ 
 void Rq_vec_to_bytes(uint8_t bytes[PKPOLYVEC_BYTES], const polyvec* data) {
     unsigned int i;
     for (i = 0; i < MODULE_RANK; ++i)
         Rq_to_bytes(bytes + i * PKPOLY_BYTES, &(data->vec[i])); // b vector는 10bit 표현이기 때문에 10 * 256 / 8 = 320 byte로 하나의 b module을 저장할 수 있음
 }
 
-/*************************************************
- * Name:        bytes_to_Rq_vec
- *
- * Description: Transform to bytes array from a vector of  polynomial in Rq
- *
- * Arguments:   - polyvec *data: pointer to output a vector of poly in Rq
- *              - uint8_t *bytes: pointer to input bytes
- **************************************************/
 void bytes_to_Rq_vec(polyvec* data, const uint8_t bytes[PKPOLYVEC_BYTES]) {
     unsigned int i;
     for (i = 0; i < MODULE_RANK; ++i)
         bytes_to_Rq(&(data->vec[i]), bytes + i * PKPOLY_BYTES);
 }
 
-/*************************************************
- * Name:        Rq_mat_to_bytes
- *
- * Description: Transform to bytes array from a matrix of  polynomial in Rq
- *
- * Arguments:   - uint8_t *bytes: pointer to output bytes
- *              - polyvec *data: pointer to input matrix of polynomial in Rq
- **************************************************/
 void Rq_mat_to_bytes(uint8_t bytes[PKPOLYMAT_BYTES],
     const polyvec data[MODULE_RANK]) {
     unsigned int i;
@@ -1466,14 +1099,6 @@ void Rq_mat_to_bytes(uint8_t bytes[PKPOLYMAT_BYTES],
         Rq_vec_to_bytes(bytes + i * PKPOLYVEC_BYTES, &(data[i]));
 }
 
-/*************************************************
- * Name:        bytes_to_Rq_mat
- *
- * Description: Transform to bytes array from a matrix of  polynomial in Rq
- *
- * Arguments:   - poly *data: pointer to output a matrix of poly in Rq
- *              - uint8_t *bytes: pointer to input bytes
- **************************************************/
 void bytes_to_Rq_mat(polyvec data[MODULE_RANK],
     const uint8_t bytes[PKPOLYMAT_BYTES]) {
     unsigned int i;
@@ -1481,14 +1106,6 @@ void bytes_to_Rq_mat(polyvec data[MODULE_RANK],
         bytes_to_Rq_vec(&(data[i]), bytes + i * PKPOLYVEC_BYTES);
 }
 
-/*************************************************
- * Name:        Rp_to_bytes
- *
- * Description: Transform to bytes array from polynomial in Rp
- *
- * Arguments:   - uint8_t *bytes: pointer to output bytes
- *              - poly *data: pointer to input polynomial in Rp
- **************************************************/
 void Rp_to_bytes(uint8_t bytes[CTPOLY1_BYTES], const poly* data) {
 #if LOG_P == 8
     unsigned int i;
@@ -1593,14 +1210,6 @@ void Rp2_to_bytes(uint8_t bytes[CTPOLY2_BYTES], const poly* data) {
 #endif
 }
 
-/*************************************************
- * Name:        bytes_to_Rp
- *
- * Description: Transform to polynomial in Rp from bytes array
- *
- * Arguments:   - poly *data: pointer to output polynomial in Rq
- *              - uint8_t *bytes: pointer to input bytes
- **************************************************/
 void bytes_to_Rp(poly* data, const uint8_t bytes[CTPOLY1_BYTES]) {
 #if LOG_P == 8
     unsigned int i;
@@ -1707,42 +1316,18 @@ void bytes_to_Rp2(poly* data, const uint8_t bytes[CTPOLY2_BYTES]) {
 #endif
 }
 
-/*************************************************
- * Name:        Rp_vec_to_bytes
- *
- * Description: Transform to bytes array from a vector of  polynomial in Rp
- *
- * Arguments:   - uint8_t *bytes: pointer to output bytes
- *              - polyvec *data: pointer to input vector of polynomial in Rp
- **************************************************/
 void Rp_vec_to_bytes(uint8_t bytes[CTPOLYVEC_BYTES], const polyvec* data) {
     unsigned int i;
     for (i = 0; i < MODULE_RANK; ++i)
         Rp_to_bytes(bytes + i * CTPOLY1_BYTES, &(data->vec[i]));
 }
 
-/*************************************************
- * Name:        bytes_to_Rp_vec
- *
- * Description: Transform to bytes array from a vector of  polynomial in Rp
- *
- * Arguments:   - poly *data: pointer to output a vector of poly in Rp
- *              - uint8_t *bytes: pointer to input bytes
- **************************************************/
 void bytes_to_Rp_vec(polyvec* data, const uint8_t bytes[CTPOLYVEC_BYTES]) {
     unsigned int i;
     for (i = 0; i < MODULE_RANK; ++i)
         bytes_to_Rp(&(data->vec[i]), bytes + i * CTPOLY1_BYTES);
 }
 
-/*************************************************
- * Name:        Sx_to_bytes
- *
- * Description: Transform to bytes array from a degree of array of secrey poly
- *
- * Arguments:   - uint8_t *bytes: pointer to output bytes
- *              - poly *data: pointer to input poly in Sn
- **************************************************/
 void Sx_to_bytes(uint8_t* bytes, const poly* data) {
     unsigned int i;
     int d_idx = 0;
@@ -1755,14 +1340,6 @@ void Sx_to_bytes(uint8_t* bytes, const poly* data) {
     }                                                   // byte[i] = coef[3] | coef[2] | coef[1] | coef[0] 으로 저장
 }
 
-/*************************************************
- * Name:        bytes_to_Sx
- *
- * Description: Transform to a degree of array of secrey poly from bytes array
- *
- * Arguments:   - poly *data: pointer to output poly in Sn
- *              - uint8_t *bytes: pointer to input bytes
- **************************************************/
 void bytes_to_Sx(poly* data, const uint8_t* bytes) {
     unsigned int i;
     int d_idx = 0;
@@ -1781,28 +1358,8 @@ void bytes_to_Sx(poly* data, const uint8_t* bytes) {
 }
 
 
-
-
 #if SMAUG_MODE == 1
-static uint32_t load24_littleendian(const uint8_t x[3]) {
-    uint32_t r;
-    r = (uint32_t)x[0];
-    r |= (uint32_t)x[1] << 8;
-    r |= (uint32_t)x[2] << 16;
-    return r;
-}
 
-/*************************************************
- * Name:        sp_cbd1
- *
- * Description: Given an array of uniformly random bytes, compute
- *              polynomial with coefficients distributed according to
- *              a modified centered binomial distribution with parameter eta=2
- *              (p(0)=3/4, p(1)=p(-1)=1/8)
- *
- * Arguments:   - poly *r: pointer to output polynomial
- *              - const uint8_t *buf: pointer to input byte array
- **************************************************/
 static void sp_cbd1(poly* r, const uint8_t buf[CBDSEED_BYTES]) {
     unsigned int i, j;
     uint32_t t, d, s;
@@ -1824,38 +1381,8 @@ static void sp_cbd1(poly* r, const uint8_t buf[CBDSEED_BYTES]) {
 }               // x, y에서 모두 1 -> d = 1 (1/4), x,y,s 가 1 -> -1, x,y가 1, s가 0 -> 1, 나머지 -> 0 이므로 1 (1/8), -1 (1/8), 0 (3/4) 인 spCBD이다.
 #endif
 
-#if SMAUG_MODE == 3 || SMAUG_MODE == 5
-/*************************************************
- * Name:        load32_littleendian
- *
- * Description: load 4 bytes into a 32-bit integer
- *              in little-endian order
- *
- * Arguments:   - const uint8_t *x: pointer to input byte array
- *
- * Returns 32-bit unsigned integer loaded from x
- **************************************************/
-static uint32_t load32_littleendian(const uint8_t x[4]) {
-    uint32_t r;
-    r = (uint32_t)x[0];
-    r |= (uint32_t)x[1] << 8;
-    r |= (uint32_t)x[2] << 16;
-    r |= (uint32_t)x[3] << 24;
-    return r;
-}
-#endif
-
 #if SMAUG_MODE == 3
-/*************************************************
- * Name:        cbd
- *
- * Description: Given an array of uniformly random bytes, compute
- *              polynomial with coefficients distributed according to
- *              a centered binomial distribution with parameter eta=1
- *
- * Arguments:   - poly *r: pointer to output polynomial
- *              - const uint8_t *buf: pointer to input byte array
- **************************************************/
+
 static void cbd(poly* r, const uint8_t buf[CBDSEED_BYTES]) {
     unsigned int i, j;
     uint32_t t;
@@ -1872,18 +1399,9 @@ static void cbd(poly* r, const uint8_t buf[CBDSEED_BYTES]) {
     }
 }
 #endif
+
 #if SMAUG_MODE == 5
-/*************************************************
- * Name:        sp_cbd2
- *
- * Description: Given an array of uniformly random bytes, compute
- *              polynomial with coefficients distributed according to
- *              a modified centered binomial distribution with parameter eta=2
- *              (p(0)=5/8, p(1)=p(-1)=3/16)
- *
- * Arguments:   - poly *r: pointer to output polynomial
- *              - const uint8_t *buf: pointer to input byte array
- **************************************************/
+
 static void sp_cbd2(poly* r, const uint8_t buf[CBDSEED_BYTES]) {
     unsigned int i, j;
     uint32_t t, s, d;
@@ -1916,37 +1434,7 @@ void shake256_absorb_twice_squeeze(uint8_t* out, size_t out_bytes,
 
 
 
-/*************************************************
- * Name:        load64_littleendian
- *
- * Description: load 8 bytes into a 64-bit integer
- *              in little-endian order
- *
- * Arguments:   - uint64_t *out: pointer to output int64_t array
- *              - int outlen: output length
- *              - uint8_t *in: pointer to input byte array
- **************************************************/
-static void load64_littleendian(uint64_t* out, const unsigned int outlen,
-    const uint8_t* in) {
-    unsigned int i, pos = 0;
-    for (i = 0; i < outlen; ++i) {
-        out[i] =
-            ((uint64_t)(in[pos])) | ((uint64_t)(in[pos + 1]) << 8) |
-            ((uint64_t)(in[pos + 2]) << 16) | ((uint64_t)(in[pos + 3]) << 24) |
-            ((uint64_t)(in[pos + 4]) << 32) | ((uint64_t)(in[pos + 5]) << 40) |
-            ((uint64_t)(in[pos + 6]) << 48) | ((uint64_t)(in[pos + 7]) << 56);
-        pos += 8;
-    }
-}
 
-/*************************************************
- * Name:        addGaussianError
- *
- * Description: Sample discret Gaussian noise e and add e to op
- *
- * Arguments:   - uint16_t *op: pointer to output vector op
- *              - uint8_t *seed: pointer to input seed of length CRYPTO_BYTES+1
- **************************************************/
 int addGaussianError(poly* op, const uint8_t* seed) {
     unsigned int i = 0, j = 0, k = 0;
     uint64_t seed_temp[SEED_LEN] = { 0 };
@@ -2035,17 +1523,6 @@ static int rejsampling_mod(int16_t res[LWE_N], const uint16_t* rand) {
     return 0;
 }
 
-/*************************************************
- * Name:        hwt
- *
- * Description: Hamming weight sampling deterministically to generate sparse
- *              polynomial r(x) from a seed. shake256 is the Extendable-Output
- *              Function from the SHA-3 family.
- *
- * Arguments:   - int16_t *res: pointer to ouptput polynomial r(x)
- *                (of length LWE), assumed to be already initialized
- *              - uint8_t *seed: pointer to input seed (of length CRYPTO_BYTES + 2)
- **************************************************/
 int hwt(int16_t* res, const uint8_t* seed) {
     unsigned int i;
     int16_t si[LWE_N] = { 0 };
@@ -2113,16 +1590,7 @@ void poly_cbd(poly* r, const uint8_t buf[CBDSEED_BYTES]) {
 
 
 
-/*************************************************
- * Name:        computeC1
- *
- * Description: Compute the first ciphertext c1 = round(p/q * (A * r))
- *
- * Arguments:   - polyvec *c1: pointer to ouptput vector c1. The c1 should be
- *                             already initialized
- *              - polyvec *A: pointer to input matrix of public A
- *              - polyvec *r: pointer to input vector of ephemeral key r
- **************************************************/
+
 void computeC1(polyvec* c1, const polyvec A[MODULE_RANK], const polyvec* r) {
     unsigned int i, j;
 
@@ -2138,17 +1606,6 @@ void computeC1(polyvec* c1, const polyvec A[MODULE_RANK], const polyvec* r) {
     }
 }
 
-/*************************************************
- * Name:        computeC2
- *
- * Description: Compute the secode ciphertext c2 = round(p/q * (b^T * r) + msg)
- *
- * Arguments:   - poly *c2: pointer to ouptput poly c2. The c2 should be
- *                             already initialized
- *              - uint8_t *delta: pointer to input message delta
- *              - polyvec *b: pointer to input vector of public b
- *              - polyvec *r: pointer to input vector of ephemeral key r
- **************************************************/
 void computeC2(poly* c2, const uint8_t delta[DELTA_BYTES], const polyvec* b,
     const polyvec* r) {
     unsigned int i, j;
@@ -2169,17 +1626,6 @@ void computeC2(poly* c2, const uint8_t delta[DELTA_BYTES], const polyvec* b,
     }
 }
 
-
-/*************************************************
- * Name:        genAx
- *
- * Description: Deterministically generate public matrix A from a seed.
- *              Entries of the A are polynomials that look uniformly random.
- *
- * Arguments:   - uint16_t *A: pointer to output matrix A
- *              - uint8_t *seed: pointer to input seed (of length
- *                                     PKSEED_BYTES)
- **************************************************/
 void genAx(polyvec A[MODULE_RANK], const uint8_t seed[PKSEED_BYTES]) {
     unsigned int i, j;
     uint8_t buf[PKPOLY_BYTES] = { 0 }, tmpseed[PKSEED_BYTES + 2];
@@ -2194,18 +1640,6 @@ void genAx(polyvec A[MODULE_RANK], const uint8_t seed[PKSEED_BYTES]) {
     }
 }
 
-/*************************************************
- * Name:        genBx
- *
- * Description: Generate public vector b from a matrix A, vector s and noise e.
- *              Random noise e is generated by Gaussian sampling.
- *
- * Arguments:   - uint16_t *b: pointer to output vector b
- *              - uint16_t *A: pointer to input matrix A
- *              - uint8_t *s: pointer to input vector s
- *              - uint8_t *e_seed: pointer to input seed of error (of
- *                                     length CRYPTO_BYTES)
- **************************************************/
 void genBx(polyvec* b, const polyvec A[MODULE_RANK], const polyvec* s,
     const uint8_t e_seed[CRYPTO_BYTES]) {
     // b = e
@@ -2215,19 +1649,6 @@ void genBx(polyvec* b, const polyvec A[MODULE_RANK], const polyvec* s,
     matrix_vec_mult_sub(b, A, s);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////
-
-/*************************************************
- * Name:        genSx_vec
- *
- * Description: Generate a vector of secret sparse polynomial s(x) from a seed.
- *
- * Arguments:   - secret_key *sk: pointer to output private key
- *              - const uint8_t *seed: pointer to a input seed of s(x) (of
- *                                     length CRYPTO_BYTES)
- **************************************************/
 void genSx_vec(secret_key* sk, const uint8_t seed[CRYPTO_BYTES]) {
     unsigned int i, j;
     uint8_t extseed[CRYPTO_BYTES + 2] = { 0 };
@@ -2243,16 +1664,6 @@ void genSx_vec(secret_key* sk, const uint8_t seed[CRYPTO_BYTES]) {
     }
 }
 
-/*************************************************
- * Name:        genPubkey
- *
- * Description: Generate public key correspending to private key.
- *
- * Arguments:   - public_key *pk: pointer to output public key
- *              - secret_key *sk: pointer to input private key
- *              - const uint8_t *err_seed: pointer to input seed of error (of
- *                                     length CRYPTO_BYTES)
- **************************************************/
 void genPubkey(public_key* pk, const secret_key* sk,
     const uint8_t err_seed[CRYPTO_BYTES]) {
     genAx(pk->A, pk->seed);                         // seed[32~63]을 통해 A 행렬 생성
@@ -2263,141 +1674,6 @@ void genPubkey(public_key* pk, const secret_key* sk,
     genBx(&(pk->b), pk->A, sk, err_seed);           // b = -As + e
 }
 
-
-
-
-
-
-void save_to_string(uint8_t* output, const ciphertext* ctxt) {
-    Rp_vec_to_bytes(output, &(ctxt->c1));
-    Rp2_to_bytes(output + CTPOLYVEC_BYTES, &(ctxt->c2));
-}
-
-void save_to_file(char* file_path, const uint8_t* ctxt) {
-    FILE* f = fopen(file_path, "wb");
-    if (f == NULL) {
-        printf("Cannot open file in save_to_file\n");
-        return;
-    }
-    fwrite(ctxt, sizeof(uint8_t), CIPHERTEXT_BYTES, f);
-    fclose(f);
-}
-
-void load_from_string(ciphertext* ctxt, const uint8_t* input) {
-    bytes_to_Rp_vec(&(ctxt->c1), input);
-    bytes_to_Rp2(&(ctxt->c2), input + CTPOLYVEC_BYTES);
-}
-
-void load_from_file(uint8_t* ctxt, const char* file_path) {
-    FILE* f = fopen(file_path, "rb");
-    if (f == NULL) {
-        printf("Cannot open file in load_from_file\n");
-        return;
-    }
-    size_t res = fread(ctxt, sizeof(uint8_t), CIPHERTEXT_BYTES, f);
-    if (res != (sizeof(uint8_t) * CIPHERTEXT_BYTES)) {
-        printf("Ctxt File reading error\n");
-        memset(ctxt, 0, CIPHERTEXT_BYTES);
-    }
-    fclose(f);
-}
-
-
-
-void save_to_string_sk(uint8_t* output, const secret_key* sk) {
-    for (size_t i = 0; i < MODULE_RANK; ++i)
-        Sx_to_bytes(output + SKPOLY_BYTES * i, &sk->vec[i]);
-}
-
-void save_to_file_sk(char* file_path, const uint8_t* sk, const int isPKE) {
-    FILE* f = fopen(file_path, "wb");
-    if (f == NULL) {
-        printf("Cannot open file in save_to_file_sk\n");
-        return;
-    }
-    size_t size = isPKE ? PKE_SECRETKEY_BYTES : KEM_SECRETKEY_BYTES;
-    fwrite(sk, sizeof(uint8_t), size, f);
-    fclose(f);
-}
-
-void load_from_string_sk(secret_key* sk, const uint8_t* input) {
-    for (size_t i = 0; i < MODULE_RANK; ++i)
-        bytes_to_Sx(&sk->vec[i], input + SKPOLY_BYTES * i);
-}
-
-void load_from_file_sk(uint8_t* sk, const char* file_path, const int isPKE) {
-    FILE* f = fopen(file_path, "rb");
-    if (f == NULL) {
-        printf("Cannot open file in load_from_file_sk\n");
-        return;
-    }
-
-    size_t size = isPKE ? PKE_SECRETKEY_BYTES : KEM_SECRETKEY_BYTES;
-    size_t res = fread(sk, sizeof(uint8_t), size, f);
-    if (res != size) {
-        printf("SK File reading error\n");
-        memset(sk, 0, size);
-    }
-    fclose(f);
-}
-
-/*----------------------------------------------------------------------------*/
-
-void save_to_string_pk(uint8_t* output, const public_key* pk) {
-    memcpy(output, pk->seed, sizeof(uint8_t) * PKSEED_BYTES);   // pk[0 ~ 31] = seed[32~63] 로 A행렬 정보 저장
-    Rq_vec_to_bytes(output + PKSEED_BYTES, &(pk->b));           // pk[32~351] = b vector를 byte 형식으로 저장
-}
-
-void save_to_file_pk(char* file_path, const uint8_t* pk) {
-    FILE* f = fopen(file_path, "wb");
-    if (f == NULL) {
-        printf("Cannot open file in save_to_file_pk\n");
-        return;
-    }
-    fwrite(pk, sizeof(uint8_t), PUBLICKEY_BYTES, f);
-    fclose(f);
-}
-
-void load_from_string_pk(public_key* pk, const uint8_t* input) {
-    memcpy(pk->seed, input, PKSEED_BYTES);
-    genAx(pk->A, pk->seed);
-    bytes_to_Rq_vec(&(pk->b), input + PKSEED_BYTES);
-}
-
-void load_from_file_pk(uint8_t* pk, const char* file_path) {
-    FILE* f = fopen(file_path, "rb");
-    if (f == NULL) {
-        printf("Cannot open file in load_from_file_pk\n");
-        return;
-    }
-    size_t res = fread(pk, sizeof(uint8_t), PUBLICKEY_BYTES, f);
-    if (res != PUBLICKEY_BYTES) {
-        printf("PK File reading error\n");
-        memset(pk, 0, PUBLICKEY_BYTES);
-    }
-    fclose(f);
-}
-
-
-
-
-
-
-
-
-
-
-
-
-/*************************************************
- * Name:        genRx_vec
- *
- * Description: Deterministically generate a vector of sparse polynomial r(x)
- *              from a seed.
- *
- * Arguments:   - polyvec *r: pointer to ouptput vector r
- *              - uint8_t *input: pointer to input seed (of length input_size)
- **************************************************/
 void genRx_vec(polyvec* r, const uint8_t* input) {
     unsigned int i;
     uint8_t buf[CBDSEED_BYTES] = { 0 };
@@ -2412,17 +1688,42 @@ void genRx_vec(polyvec* r, const uint8_t* input) {
     }
 }
 
-/*************************************************
- * Name:        indcpa_keypair
- *
- * Description: Generates public and private key for the CPA-secure
- *              Module-Lizard public-key encryption scheme.
- *
- * Arguments:   - public_key *pk: pointer to output public key
- *                (a structure composed of (seed of A, matrix A, vector b))
- *              - secret_key *sk: pointer to output private key
- *                (a structure composed of (vector s, t, vector negstart))
- **************************************************/
+
+
+void save_to_string(uint8_t* output, const ciphertext* ctxt) {
+    Rp_vec_to_bytes(output, &(ctxt->c1));
+    Rp2_to_bytes(output + CTPOLYVEC_BYTES, &(ctxt->c2));
+}
+
+void load_from_string(ciphertext* ctxt, const uint8_t* input) {
+    bytes_to_Rp_vec(&(ctxt->c1), input);
+    bytes_to_Rp2(&(ctxt->c2), input + CTPOLYVEC_BYTES);
+}
+
+void save_to_string_sk(uint8_t* output, const secret_key* sk) {
+    for (size_t i = 0; i < MODULE_RANK; ++i)
+        Sx_to_bytes(output + SKPOLY_BYTES * i, &sk->vec[i]);
+}
+
+void load_from_string_sk(secret_key* sk, const uint8_t* input) {
+    for (size_t i = 0; i < MODULE_RANK; ++i)
+        bytes_to_Sx(&sk->vec[i], input + SKPOLY_BYTES * i);
+}
+
+void save_to_string_pk(uint8_t* output, const public_key* pk) {
+    memcpy(output, pk->seed, sizeof(uint8_t) * PKSEED_BYTES);   // pk[0 ~ 31] = seed[32~63] 로 A행렬 정보 저장
+    Rq_vec_to_bytes(output + PKSEED_BYTES, &(pk->b));           // pk[32~351] = b vector를 byte 형식으로 저장
+}
+
+void load_from_string_pk(public_key* pk, const uint8_t* input) {
+    memcpy(pk->seed, input, PKSEED_BYTES);
+    genAx(pk->A, pk->seed);
+    bytes_to_Rq_vec(&(pk->b), input + PKSEED_BYTES);
+}
+
+
+
+
 void indcpa_keypair(uint8_t pk[PUBLICKEY_BYTES],
     uint8_t sk[PKE_SECRETKEY_BYTES]) {
     public_key pk_tmp;
@@ -2448,19 +1749,6 @@ void indcpa_keypair(uint8_t pk[PUBLICKEY_BYTES],
     save_to_string_sk(sk, &sk_tmp);                             // sk = s
 }
 
-/*************************************************
- * Name:        indcpa_enc
- *
- * Description: Encryption function of the CPA-secure
- *              Module-Lizard public-key encryption scheme.
- *
- * Arguments:   - ciphertext *ctxt: pointer to output ciphertext
- *                (a structure composed of (vector c1, c2))
- *              - public_key *pk: pointer to input public key
- *                (a structure composed of (seed of A, matrix A, vector b))
- *              - uint8_t *delta: pointer to input random delta (of length
- *                DELTA_BYTES) to deterministically generate all randomness
- **************************************************/
 void indcpa_enc(uint8_t ctxt[CIPHERTEXT_BYTES],
     const uint8_t pk[PUBLICKEY_BYTES],
     const uint8_t mu[DELTA_BYTES],
@@ -2489,19 +1777,6 @@ void indcpa_enc(uint8_t ctxt[CIPHERTEXT_BYTES],
     save_to_string(ctxt, &ctxt_tmp);
 }
 
-/*************************************************
- * Name:        indcpa_dec
- *
- * Description: Decryption function of the CPA-secure
- *              Module-Lizard public-key encryption scheme.
- *
- * Arguments:   - uint8_t *delta: pointer to output decrypted delta
- *                (of length DELTA_BYTES), assumed to be already initialized
- *              - secret_key *sk: pointer to input private key
- *                (a structure composed of (vector s, t, vector negstart)
- *              - ciphertext *ctxt: pointer to input ciphertext
- *                (a structure composed of (vector c1, c2))
- **************************************************/
 void indcpa_dec(uint8_t delta[DELTA_BYTES],
     const uint8_t sk[PKE_SECRETKEY_BYTES],
     const uint8_t ctxt[CIPHERTEXT_BYTES]) {
@@ -2602,17 +1877,11 @@ int main()
 {
     uint8_t* pk = (uint8_t*)malloc(PUBLICKEY_BYTES);
     uint8_t* sk = (uint8_t*)malloc(KEM_SECRETKEY_BYTES);
-    
-
 
     uint8_t ctxt[CIPHERTEXT_BYTES];
     uint8_t ss[32];
     uint8_t ss2[32];
 
-    // for (int i = 0; i < 32; i++)
-    // {
-    //     printf("43");
-    // }
     crypto_kem_keypair(pk, sk);
     crypto_kem_enc(ctxt, ss, pk);
     crypto_kem_dec(ss2, ctxt, sk);
