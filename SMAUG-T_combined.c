@@ -775,27 +775,27 @@ static void toom_cook_4way(const uint16_t* a1, const uint16_t* b1,
 
     // EVALUATION   평가 지점은 infty, 2, 1, -1, 1/2, -1/2, 0
     for (j = 0; j < N_SB; ++j) {
-        r0 = A0[j];     // r0 = a1[i]
-        r1 = A1[j];     // r1 = a1[i + 64]
-        r2 = A2[j];     // r2 = a1[i + 128]
-        r3 = A3[j];     // r3 = a1[i + 192]
-        r4 = r0 + r2;   // r4 = a1[i] + a1[i + 128]
-        r5 = r1 + r3;   // r5 = a1[i + 64] + a1[i + 192]
-        r6 = r4 + r5;   // r6 = a1[i] + a1[i + 64] + a1[i + 128] + a1[i + 192]
-        r7 = r4 - r5;   // r7 = a1[i] + a1[i + 128] - a1[i + 64] + a1[i + 192]
-        aw3[j] = r6;    // aw3 = a1[i] + a1[i + 64] + a1[i + 128] + a1[i + 192] -> 평가 지점 A( 1)
-        aw4[j] = r7;    // aw4 = a1[i] - a1[i + 64] + a1[i + 128] + a1[i + 192] -> 평가 지점 A(-1)
+        r0 = A0[j];                 // r0 = a1[i]
+        r1 = A1[j];                 // r1 = a1[i + 64]
+        r2 = A2[j];                 // r2 = a1[i + 128]
+        r3 = A3[j];                 // r3 = a1[i + 192]
+        r4 = r0 + r2;               // r4 = a1[i] + a1[i + 128]
+        r5 = r1 + r3;               // r5 = a1[i + 64] + a1[i + 192]
+        r6 = r4 + r5;               // r6 = a1[i] + a1[i + 64] + a1[i + 128] + a1[i + 192]
+        r7 = r4 - r5;               // r7 = a1[i] + a1[i + 128] - a1[i + 64] + a1[i + 192]
+        aw3[j] = r6;                // aw3 = a1[i] + a1[i + 64] + a1[i + 128] + a1[i + 192] -> 평가 지점 A( 1)
+        aw4[j] = r7;                // aw4 = a1[i] - a1[i + 64] + a1[i + 128] + a1[i + 192] -> 평가 지점 A(-1)
 
         r4 = ((r0 << 2) + r2) << 1; // r4 = 8 * a1[i]                  + 2 * a1[i + 128] 
         r5 = (r1 << 2) + r3;        // r5 =             4 * a1[i + 64]                   + a1[i + 192] 
-        r6 = r4 + r5;   // r6 = 8 * a1[i] + 4 * a1[i + 64] + 2 * a1[i + 128] + a1[i + 192]
-        r7 = r4 - r5;   // r7 = 8 * a1[i] - 4 * a1[i + 64] + 2 * a1[i + 128] - a1[i + 192]
-        aw5[j] = r6;    // aw5 = 8 * a1[i] + 4 * a1[i + 64] + 2 * a1[i + 128] + a1[i + 192] -> 평가 지점 8 * A( 1/2)
-        aw6[j] = r7;    // aw6 = 8 * a1[i] - 4 * a1[i + 64] + 2 * a1[i + 128] - a1[i + 192] -> 평가 지점 8 * A(-1/2)
+        r6 = r4 + r5;               // r6 = 8 * a1[i] + 4 * a1[i + 64] + 2 * a1[i + 128] + a1[i + 192]
+        r7 = r4 - r5;               // r7 = 8 * a1[i] - 4 * a1[i + 64] + 2 * a1[i + 128] - a1[i + 192]
+        aw5[j] = r6;                // aw5 = 8 * a1[i] + 4 * a1[i + 64] + 2 * a1[i + 128] + a1[i + 192] -> 평가 지점 8 * A( 1/2)
+        aw6[j] = r7;                // aw6 = 8 * a1[i] - 4 * a1[i + 64] + 2 * a1[i + 128] - a1[i + 192] -> 평가 지점 8 * A(-1/2)
         r4 = (r3 << 3) + (r2 << 2) + (r1 << 1) + r0;    // r4 = a1[i] + 2 * a1[i + 64] + 4 * a1[i + 128] + 8 * a1[i + 192]
-        aw2[j] = r4;    // aw2 = a1[i] + 2 * a1[i + 64] + 4 * a1[i + 128] + 8 * a1[i + 192] -> 평가 지점 A(2)
-        aw7[j] = r0;    // aw7 = a1[i]       -> 평가 지점 A(0)
-        aw1[j] = r3;    // aw1 = a1[i + 192] -> 평가 지점 A(infty)
+        aw2[j] = r4;                // aw2 = a1[i] + 2 * a1[i + 64] + 4 * a1[i + 128] + 8 * a1[i + 192] -> 평가 지점 A(2)
+        aw7[j] = r0;                // aw7 = a1[i]       -> 평가 지점 A(0)
+        aw1[j] = r3;                // aw1 = a1[i + 192] -> 평가 지점 A(infty)
     }
     for (j = 0; j < N_SB; ++j) {
         r0 = B0[j];
@@ -852,24 +852,24 @@ c6 =    r0 =       1	    0	   0	    0	    0	    0	   0           r6 (0)
         r5 = w6[i];
         r6 = w7[i];
 
-        r1 = r1 + r4;               // r1 = r(1) + r(4)
-        r5 = r5 - r4;               // r5 = r(5) - r(4)
-        r3 = ((r3 - r2) >> 1);      // r3 = (r(3) - r(2)) / 2
-        r4 = r4 - r0;               // r4 = r(4) - r(0)
-        r4 = r4 - (r6 << 6);        // r4 = r(4) - r(0) - 64 * r(6)
-        r4 = (r4 << 1) + r5;        // r4 = 2 * (r(4) - r(0) - 64 * r(6)) + r(5) - r(4)
-        r2 = r2 + r3;               // r2 = r(2) + (r(3) - r(2)) / 2
-        r1 = r1 - (r2 << 6) - r2;   // r1 = r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2
-        r2 = r2 - r6;               // r2 = r(2) + (r(3) - r(2)) / 2 - r(6)
-        r2 = r2 - r0;               // r2 = r(2) + (r(3) - r(2)) / 2 - r(6) - r(0)
-        r1 = r1 + 45 * r2;          // r1 = r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0))
+        r1 = r1 + r4;                                               // r1 = r(1) + r(4)
+        r5 = r5 - r4;                                               // r5 = r(5) - r(4)
+        r3 = ((r3 - r2) >> 1);                                      // r3 = (r(3) - r(2)) / 2
+        r4 = r4 - r0;                                               // r4 = r(4) - r(0)
+        r4 = r4 - (r6 << 6);                                        // r4 = r(4) - r(0) - 64 * r(6)
+        r4 = (r4 << 1) + r5;                                        // r4 = 2 * (r(4) - r(0) - 64 * r(6)) + r(5) - r(4)
+        r2 = r2 + r3;                                               // r2 = r(2) + (r(3) - r(2)) / 2
+        r1 = r1 - (r2 << 6) - r2;                                   // r1 = r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2
+        r2 = r2 - r6;                                               // r2 = r(2) + (r(3) - r(2)) / 2 - r(6)
+        r2 = r2 - r0;                                               // r2 = r(2) + (r(3) - r(2)) / 2 - r(6) - r(0)
+        r1 = r1 + 45 * r2;                                          // r1 = r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0))
         r4 = (uint16_t)(((r4 - (r2 << 3)) * (uint32_t)inv3) >> 3);  // r4 = {2 * (r(4) - r(0) - 64 * r(6)) + r(5) - r(4) - 8 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0))} * 1/24
         r5 = r5 + r1;                                               // r5 = r(5) + r(4) + r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0))
         r1 = (uint16_t)(((r1 + (r3 << 4)) * (uint32_t)inv9) >> 1);  // r1 = {r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0)) + 8 * ((r(3) - r(2)))} * 1/18
         r3 = -(r3 + r1);                                            // r3 = - {(r(3) - r(2)) / 2} - {r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0)) + 8 * ((r(3) - r(2)))} * 1/18
         r5 = (uint16_t)(((30 * r1 - r5) * (uint32_t)inv15) >> 2);   // r5 = {30 * ({r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0)) + 8 * ((r(3) - r(2)))} * 1/18) - r(5) + r(4) + r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0))} * 1/60
-        r2 = r2 - r4;               // r2 = r(2) + (r(3) - r(2)) / 2 - r(6) - r(0) - {{2 * (r(4) - r(0) - 64 * r(6)) + r(5) + r(4) - 8 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0))} * 1/24}
-        r1 = r1 - r5;               // r1 = {r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0)) + 8 * ((r(3) - r(2)))} * 1/18 - {{30 * ({r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0)) + 8 * ((r(3) - r(2)))} * 1/18) - r(5) + r(4) + r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0))} * 1/60}
+        r2 = r2 - r4;                                               // r2 = r(2) + (r(3) - r(2)) / 2 - r(6) - r(0) - {{2 * (r(4) - r(0) - 64 * r(6)) + r(5) + r(4) - 8 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0))} * 1/24}
+        r1 = r1 - r5;                                               // r1 = {r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0)) + 8 * ((r(3) - r(2)))} * 1/18 - {{30 * ({r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0)) + 8 * ((r(3) - r(2)))} * 1/18) - r(5) + r(4) + r(1) + r(4) - 64 * (r(2) + (r(3) - r(2)) / 2) - r(2) + (r(3) - r(2)) / 2 + 45 * (r(2) + (r(3) - r(2)) / 2 - r(6) - r(0))} * 1/60}
 
         C[i] += r6;         // C[  0 ~ 126]
         C[i + 64] += r5;    // C[ 64 ~ 190]
@@ -921,14 +921,14 @@ void vec_vec_mult_add(poly* r, const polyvec* a, const polyvec* b,
 
     for (i = 0; i < MODULE_RANK; ++i)
         for (j = 0; j < LWE_N; ++j)
-            al.vec[i].coeffs[j] = a->vec[i].coeffs[j] >> mod;
+            al.vec[i].coeffs[j] = a->vec[i].coeffs[j] >> mod;   // 원래 bit모양으로 변경해주고
 
     memset(&res, 0, sizeof(poly));
-    vec_vec_mult(&res, &al, b);
+    vec_vec_mult(&res, &al, b);         // res = b * r
     for (j = 0; j < LWE_N; ++j)
-        res.coeffs[j] <<= mod;
+        res.coeffs[j] <<= mod;          // res = b * r << mod 다시 최대 bit를 모두 쓰도록 해줌(ex) uint16_t 이기 때문에 16bit를 쓰도록)
 
-    poly_add(r, r, &res);
+    poly_add(r, r, &res);               // r = q/t * mu + b * r
 }
 
 void matrix_vec_mult_add(polyvec* r, const polyvec a[MODULE_RANK],
@@ -939,11 +939,11 @@ void matrix_vec_mult_add(polyvec* r, const polyvec a[MODULE_RANK],
     for (i = 0; i < MODULE_RANK; ++i) {
         for (j = 0; j < MODULE_RANK; ++j)
             for (k = 0; k < LWE_N; ++k)
-                at.vec[j].coeffs[k] = a[j].vec[i].coeffs[k] >> _16_LOG_Q;
+                at.vec[j].coeffs[k] = a[j].vec[i].coeffs[k] >> _16_LOG_Q;   // 상위 10bit만 남겨주고
 
-        vec_vec_mult(&r->vec[i], &at, b);
+        vec_vec_mult(&r->vec[i], &at, b);       // A*r
         for (j = 0; j < LWE_N; ++j)
-            r->vec[i].coeffs[j] <<= _16_LOG_Q;
+            r->vec[i].coeffs[j] <<= _16_LOG_Q;  // 상위 10bit를 유효하게 만들어주고
     }
 }
 
@@ -977,7 +977,7 @@ void Rq_to_bytes(uint8_t bytes[PKPOLY_BYTES], const poly* data) {
 
 #if LOG_Q == 10
     for (i = 0; i < LWE_N; ++i) {
-        bytes[i] = data->coeffs[i] >> 8;        // bytes[i]에 b값의 상위 8bit를 저장
+        bytes[i] = data->coeffs[i] >> 8;        // bytes[i]에 b값의 상위 8bit를 저장  ->
         tmp[i] = data->coeffs[i] & 0x00c0;      // tmp[i]에 b값의 중위 2bit를 저장    -> 실제로 필요한 값인 10bit만을 저장한다는 의미임
     }
     int16_t buf[DATA_OFFSET * 2] = { 0 };
@@ -1029,6 +1029,7 @@ void bytes_to_Rq(poly* data, const uint8_t bytes[PKPOLY_BYTES]) {
 #if LOG_Q == 10
     for (i = 0; i < LWE_N; ++i)
         data->coeffs[i] = (int16_t)bytes[i] << 8;               // data->coeffs[i]의 상위 8bit를 shake128의 결과값으로 집어 넣어 줌
+                                                                // enc 과정에서는 b 행렬을 저장
 
     int16_t buf[DATA_OFFSET * 2] = { 0 };
     load16_littleendian(buf, DATA_OFFSET * 2, bytes + LWE_N);   // buf 배열에 들어가지 않은 나머지 bytes 값을 저장
@@ -1111,7 +1112,7 @@ void Rp_to_bytes(uint8_t bytes[CTPOLY1_BYTES], const poly* data) {
     unsigned int i;
     memset(bytes, 0, sizeof(uint8_t) * CTPOLY1_BYTES);
     for (i = 0; i < LWE_N; ++i)
-        memcpy(&(bytes[i]), &(data->coeffs[i]), sizeof(uint8_t));
+        memcpy(&(bytes[i]), &(data->coeffs[i]), sizeof(uint8_t));   // 8bit로 압축했다면, 그대로 저장하면 됨
 #endif
 #if LOG_P == 9
     int16_t tmp[LWE_N] = { 0 };
@@ -1167,7 +1168,7 @@ void Rp2_to_bytes(uint8_t bytes[CTPOLY2_BYTES], const poly* data) {
             ((data->coeffs[d_idx + 6] & 0x3) << 6);
         bytes[b_idx + 4] = ((data->coeffs[d_idx + 6] & 0x1c) >> 2) |
             ((data->coeffs[d_idx + 7] & 0x1f) << 3);
-    }
+    }       // 저장한 값이 5bit이기 때문에 5bit 8개 -> 1byte 5개 로 encoding 진행
 #endif
 #if LOG_P2 == 4
     unsigned int i;
@@ -1595,13 +1596,13 @@ void computeC1(polyvec* c1, const polyvec A[MODULE_RANK], const polyvec* r) {
     unsigned int i, j;
 
     // c1 = A * r
-    matrix_vec_mult_add(c1, A, r);
+    matrix_vec_mult_add(c1, A, r);      // 여기에서 결과값은 상위 10bit에 저장되어 있음
 
     // Rounding q to p
-    for (i = 0; i < MODULE_RANK; ++i) {
+    for (i = 0; i < MODULE_RANK; ++i) { 
         for (j = 0; j < LWE_N; ++j) {
-            c1->vec[i].coeffs[j] =
-                ((c1->vec[i].coeffs[j] + RD_ADD) & RD_AND) >> _16_LOG_P;
+            c1->vec[i].coeffs[j] =                                          // 반올림을 보정값 RD_ADD를 더해주고
+                ((c1->vec[i].coeffs[j] + RD_ADD) & RD_AND) >> _16_LOG_P;    // 남는 비트 수 만큼 남겨 준 후 결과값을 위해 >> 6 을 진행
         }
     }
 }
@@ -1610,21 +1611,25 @@ void computeC2(poly* c2, const uint8_t delta[DELTA_BYTES], const polyvec* b,
     const polyvec* r) {
     unsigned int i, j;
 
-    // c2 = q/2 * delta
+    // c2 = q/2 * mu                         // 모든 SMAUG-T에 대해서 ssk seed인 mu의 크기를 줄이는 t는 2로 고정
     for (i = 0; i < DELTA_BYTES; ++i) {
         for (j = 0; j < sizeof(uint8_t) * 8; ++j) {
-            c2->coeffs[8 * i + j] = (uint16_t)((delta[i] >> j) << _16_LOG_T);
-        }
-    }
-
-    // c2 = q/2 * delta + (b * r)
-    vec_vec_mult_add(c2, b, r, _16_LOG_Q);
+            c2->coeffs[8 * i + j] = (uint16_t)((delta[i] >> j) << _16_LOG_T);   // mu의 한 bit씩을 coeff의 첫 bit에 저장 (1000 0000 0000 0000)
+        }                                                                       // 연산을 진행하는 과정을 제외하고는 SMAUG-T의 모든 bit는 상위 10bit를 이용하도록 되어있음
+    }                                                                           // 원래, q/2 = 1024/2 = 512, mu << 9 -> 이는 상위 10bit를 이용한다는 전제 하에,
+                                                                                // 16bit의 첫 번째 수가 되게 되어있음
+                                                                                // 문서 : mu << 9
+                                                                                // 코드 : mu << 15  (mu << 9 << 6 = mu << 15 이므로)
+    // c2 = q/t * mu + (b * r)
+    vec_vec_mult_add(c2, b, r, _16_LOG_Q);  // 16bit 중 상위 10bit 에 값을 저장하는 형식으로, c2 = q/t * mu + (b * r) 계산 완료
 
     // Rounding q to p'
     for (i = 0; i < LWE_N; ++i) {
-        c2->coeffs[i] = ((c2->coeffs[i] + RD_ADD2) & RD_AND2) >> _16_LOG_P2;
-    }
+        c2->coeffs[i] = ((c2->coeffs[i] + RD_ADD2) & RD_AND2) >> _16_LOG_P2;    // p'/t * mu + p'/q * (br)
+    }   // 상위 LOG_P2 bit를 남길 생각이기 때문에 반올림 기준값인 RD_ADD2를 더해주고 상위 5bit, 16bit->5bit 로 c2에 결과 저장
 }
+
+
 
 void genAx(polyvec A[MODULE_RANK], const uint8_t seed[PKSEED_BYTES]) {
     unsigned int i, j;
@@ -1679,12 +1684,12 @@ void genRx_vec(polyvec* r, const uint8_t* input) {
     uint8_t buf[CBDSEED_BYTES] = { 0 };
 
     for (i = 0; i < MODULE_RANK; ++i) {
-        uint8_t extseed[DELTA_BYTES + 1];
+        uint8_t extseed[DELTA_BYTES + 1];       // extseed[0~31] = seed[0~31]
         memcpy(extseed, input, DELTA_BYTES);
-        extseed[DELTA_BYTES] = i;
+        extseed[DELTA_BYTES] = i;               // extseed[32] = 0 or 1
 
-        shake256(buf, CBDSEED_BYTES, extseed, DELTA_BYTES + 1);
-        poly_cbd(&r->vec[i], buf);
+        shake256(buf, CBDSEED_BYTES, extseed, DELTA_BYTES + 1); // buf에 rejection sampling을 위한 XOF 의 결과를 저장
+        poly_cbd(&r->vec[i], buf);              // rejection sampling(spCBD)을 통해 1 (1/8), -1 (1/8), 0 (3/4) 의 확률로 값을 갖도록 함
     }
 }
 
@@ -1756,25 +1761,26 @@ void indcpa_enc(uint8_t ctxt[CIPHERTEXT_BYTES],
 
     uint8_t seed_r[DELTA_BYTES] = { 0 };
     public_key pk_tmp;
-    load_from_string_pk(&pk_tmp, pk);
+    load_from_string_pk(&pk_tmp, pk);           // pk_tmp에 A 행렬 seed, A행렬, b vector 를 저장
 
     // Compute a vector r = hwt(delta, H'(pk))
     polyvec r;
-    memset(&r, 0, sizeof(polyvec));
+    memset(&r, 0, sizeof(polyvec));             
 
     if (seed == NULL)
-        randombytes(seed_r, DELTA_BYTES);
+        randombytes(seed_r, DELTA_BYTES);           // enc_kem 과정에서 생성한 random seed가 없으면 random 값을 생성해서 사용
     else
-        cmov(seed_r, seed, DELTA_BYTES, 1);
-    genRx_vec(&r, seed_r);
+        cmov(seed_r, seed, DELTA_BYTES, 1);         // 있다면 그 값을 그대로 가져옴
+
+    genRx_vec(&r, seed_r);                          // seed를 통해 r vector 생성
 
     // Compute c1(x), c2(x)
     ciphertext ctxt_tmp;
-    memset(&ctxt_tmp, 0, sizeof(ciphertext));
-    computeC1(&(ctxt_tmp.c1), pk_tmp.A, &r);
-    computeC2(&(ctxt_tmp.c2), mu, &pk_tmp.b, &r);
+    memset(&ctxt_tmp, 0, sizeof(ciphertext));   
+    computeC1(&(ctxt_tmp.c1), pk_tmp.A, &r);        // p/q(Ar)
+    computeC2(&(ctxt_tmp.c2), mu, &pk_tmp.b, &r);   // p'/q * (br) + p'/t * mu
 
-    save_to_string(ctxt, &ctxt_tmp);
+    save_to_string(ctxt, &ctxt_tmp);    // c1, c2 를 byte 형식으로 변경
 }
 
 void indcpa_dec(uint8_t delta[DELTA_BYTES],
@@ -1830,14 +1836,15 @@ int crypto_kem_enc(uint8_t* ctxt, uint8_t* ss, const uint8_t* pk) {
     uint8_t mu[DELTA_BYTES] = { 0 }; // shared secret and seed
     uint8_t buf[DELTA_BYTES + CRYPTO_BYTES] = { 0 };
 
-    randombytes(mu, DELTA_BYTES);
-    hash_h(buf, pk, PUBLICKEY_BYTES);
-    hash_g(buf, DELTA_BYTES + CRYPTO_BYTES, mu, DELTA_BYTES, buf,
+    randombytes(mu, DELTA_BYTES);                                   // shared secret key의 seed값인 mu 생성
+    
+    hash_h(buf, pk, PUBLICKEY_BYTES);                               // H(pk)   
+    hash_g(buf, DELTA_BYTES + CRYPTO_BYTES, mu, DELTA_BYTES, buf,   // seed | ssk = G(mu, H(pk))
         SHA3_256_HashSize);
 
-    memset(ss, 0, CRYPTO_BYTES);
-    indcpa_enc(ctxt, pk, mu, buf);
-    cmov(ss, buf + DELTA_BYTES, CRYPTO_BYTES, 1);
+    memset(ss, 0, CRYPTO_BYTES);                                    
+    indcpa_enc(ctxt, pk, mu, buf);                                  // pke 스킴의 encryption 과정을 통해 mu를 encryption
+    cmov(ss, buf + DELTA_BYTES, CRYPTO_BYTES, 1);                   // ss에 G(mu, H(pk))[32~63] 을 저장
 
     return 0;
 }
