@@ -614,10 +614,10 @@ int verify(const uint8_t* a, const uint8_t* b, size_t len) {
     uint8_t r = 0;
 
     for (i = 0; i < len; i++)
-        r |= a[i] ^ b[i];
+        r |= a[i] ^ b[i];       // c1 = c1', c2 = c2' 일 경우 r = 0, 다르면 r = 1
 
 
-    return ((-(uint64_t)(r))) >> 63;
+    return ((-(uint64_t)(r))) >> 63;    // 검증 실패시 1, 성공시 0을 return
 }
 
 void cmov(uint8_t* r, const uint8_t* x, size_t len, uint8_t b) {
@@ -924,12 +924,13 @@ void vec_vec_mult_add(poly* r, const polyvec* a, const polyvec* b,
             al.vec[i].coeffs[j] = a->vec[i].coeffs[j] >> mod;   // 원래 bit모양으로 변경해주고
 
     memset(&res, 0, sizeof(poly));
-    vec_vec_mult(&res, &al, b);         // res = b * r
+    vec_vec_mult(&res, &al, b);         // res = b * r  
+                                        // dec의 경우 c1 * s
     for (j = 0; j < LWE_N; ++j)
         res.coeffs[j] <<= mod;          // res = b * r << mod 다시 최대 bit를 모두 쓰도록 해줌(ex) uint16_t 이기 때문에 16bit를 쓰도록)
 
     poly_add(r, r, &res);               // r = q/t * mu + b * r
-}
+}                                       // dec의 경우 c2 + c1 * s
 
 void matrix_vec_mult_add(polyvec* r, const polyvec a[MODULE_RANK],
     const polyvec* b) {
@@ -1216,7 +1217,7 @@ void bytes_to_Rp(poly* data, const uint8_t bytes[CTPOLY1_BYTES]) {
     unsigned int i;
     memset(data, 0, sizeof(poly));
     for (i = 0; i < LWE_N; ++i)
-        memcpy(&(data->coeffs[i]), &(bytes[i]), sizeof(uint8_t));
+        memcpy(&(data->coeffs[i]), &(bytes[i]), sizeof(uint8_t));   // 8bit로 줄였기 때문에 그대로 사용하면 됨
 #endif
 #if LOG_P == 9
     int16_t tmp[LWE_N] = { 0 };
@@ -1272,6 +1273,7 @@ void bytes_to_Rp2(poly* data, const uint8_t bytes[CTPOLY2_BYTES]) {
         data->coeffs[d_idx + 6] =
             ((bytes[b_idx + 3] & 0xc0) >> 6) | ((bytes[b_idx + 4] & 0x7) << 2);
         data->coeffs[d_idx + 7] = (bytes[b_idx + 4] & 0xf8) >> 3;
+        // 1byte 5개 -> 5bit 8개로 decoding 진행
     }
 #endif
 #if LOG_P2 == 4
@@ -1346,15 +1348,16 @@ void bytes_to_Sx(poly* data, const uint8_t* bytes) {
     int d_idx = 0;
     for (i = 0; i < LWE_N / 4; ++i) {
         d_idx = i * 4;
-        uint8_t t[4] = { 0 };
-        t[0] = (bytes[i] & 0x03);
-        t[1] = ((bytes[i] >> 2) & 0x03);
-        t[2] = ((bytes[i] >> 4) & 0x03);
-        t[3] = ((bytes[i] >> 6) & 0x03);
+        uint8_t t[4] = { 0 };                               // sk의 경우 1 -> 01, -1 -> 11, 0 -> 00로 저장되어 있음
+
+        t[0] = (bytes[i] & 0x03);                           // byte의 0000 0011 을 t[0]에 저장
+        t[1] = ((bytes[i] >> 2) & 0x03);                    // byte의 0000 1100 을 t[1]에 저장
+        t[2] = ((bytes[i] >> 4) & 0x03);                    // byte의 0011 0000 을 t[2]에 저장
+        t[3] = ((bytes[i] >> 6) & 0x03);                    // byte의 1100 0000 을 t[3]에 저장
         data->coeffs[d_idx] = t[0] | (-(t[0] >> 1));
         data->coeffs[d_idx + 1] = t[1] | (-(t[1] >> 1));
         data->coeffs[d_idx + 2] = t[2] | (-(t[2] >> 1));
-        data->coeffs[d_idx + 3] = t[3] | (-(t[3] >> 1));
+        data->coeffs[d_idx + 3] = t[3] | (-(t[3] >> 1));    // data에 byte(string sk)값을 01 -> 1,  11 -> -1,  0 -> 0 로 저장
     }
 }
 
@@ -1751,7 +1754,7 @@ void indcpa_keypair(uint8_t pk[PUBLICKEY_BYTES],
     memset(pk, 0, PUBLICKEY_BYTES);                             
     memset(sk, 0, PKE_SECRETKEY_BYTES);
     save_to_string_pk(pk, &pk_tmp);                             // pk = A seed(seed[32~63]) | b  로 저장
-    save_to_string_sk(sk, &sk_tmp);                             // sk = s
+    save_to_string_sk(sk, &sk_tmp);                             // sk = s (save_string 의 결과로 sk는 1, -1을 2bit로 저장하기 때문에, 1 -> 01, -1 -> 11, 0 -> 00 으로 저장)
 }
 
 void indcpa_enc(uint8_t ctxt[CIPHERTEXT_BYTES],
@@ -1791,35 +1794,40 @@ void indcpa_dec(uint8_t delta[DELTA_BYTES],
 
     secret_key sk_tmp;
     memset(&sk_tmp, 0, sizeof(secret_key));
-    load_from_string_sk(&sk_tmp, sk);
+    load_from_string_sk(&sk_tmp, sk);                   // byte 형태의 sk를 다항식 형태로 변경
 
-    ciphertext ctxt_tmp;
-    load_from_string(&ctxt_tmp, ctxt);
+    ciphertext ctxt_tmp;            
+    load_from_string(&ctxt_tmp, ctxt);                  // byte 형태의 c1, c2를 다항식 형태로 변경
 
-    unsigned int i, j;
-    c1_temp = ctxt_tmp.c1;
-    delta_temp = ctxt_tmp.c2;
-    for (i = 0; i < LWE_N; ++i)
-        delta_temp.coeffs[i] <<= _16_LOG_P2;
+    unsigned int i, j;          
+    c1_temp = ctxt_tmp.c1;                              // c1을 temp에 저장
+    delta_temp = ctxt_tmp.c2;                           // c2를 temp에 저장
+    for (i = 0; i < LWE_N; ++i)         
+        delta_temp.coeffs[i] <<= _16_LOG_P2;            // c2를 1111 1000 0000 0000 으로 상위 bit에 저장
     for (i = 0; i < MODULE_RANK; ++i)
         for (j = 0; j < LWE_N; ++j)
-            c1_temp.vec[i].coeffs[j] <<= _16_LOG_P;
+            c1_temp.vec[i].coeffs[j] <<= _16_LOG_P;     // c1을 1111 1111 0000 0000 으로 상위 bit에 저장
+                                                        // -> 이는 rounding을 진행할 때 bit 연산으로 진행하기 위함
 
     // Compute delta = (delta + c1^T * s)
-    vec_vec_mult_add(&delta_temp, &c1_temp, &sk_tmp, _16_LOG_P);
+    vec_vec_mult_add(&delta_temp, &c1_temp, &sk_tmp, _16_LOG_P);    // c2 + c1 * s 를 진행
 
     // Compute delta = 2/p * delta
-    for (i = 0; i < LWE_N; ++i) {
-        delta_temp.coeffs[i] += DEC_ADD;
-        delta_temp.coeffs[i] >>= _16_LOG_T;
-        delta_temp.coeffs[i] &= 0x01;
-    }
+    // 기존의 복호화는, t/p(c1*s) + t/p'(c2) -> t/p( c1 * s + p/p'(c2) )
+    // 우리는 모든 값을 상위 bit로 저장하여 사용중 이었음
+    // 즉, c1을 기준으로 했을 때, c2는 이미 p/p' 만큼 shift되어 있는 상태임
+    // 따라서 t/p(c2 + c1 * s)는 사실 t/p( p/p'(c2) + c1 * s) 라고 볼 수 있음
+    for (i = 0; i < LWE_N; ++i) {                       // t/p * (c2 + c1 * s)     
+        delta_temp.coeffs[i] += DEC_ADD;                // p/p'(c2) + c1 * s + 2^15                 (반올림 기준값 0100 0000 0000 0000 을 더해주고)
+        delta_temp.coeffs[i] >>= _16_LOG_T;             // (p/p'(c2) + c1 * s + 2^15)/2^16          -> t bit 만큼을 남길거니깐 언제나 이렇게 decryption 가능
+        delta_temp.coeffs[i] &= 0x01;                   // 마지막 bit 만 가져오기
+    }   // 결국 t/p(c2 + c1 * s)를 통해 t/p( p/p'(c2) + c1 * s) 을 계산
 
     // Set delta
     memset(delta, 0, DELTA_BYTES);
     for (i = 0; i < DELTA_BYTES; ++i) {
         for (j = 0; j < 8; ++j) {
-            delta[i] ^= ((uint8_t)(delta_temp.coeffs[8 * i + j]) << j);
+            delta[i] ^= ((uint8_t)(delta_temp.coeffs[8 * i + j]) << j); // 결과값 delta를 기존 모양대로 저장
         }
     }
 }
@@ -1827,7 +1835,7 @@ void indcpa_dec(uint8_t delta[DELTA_BYTES],
 
 void crypto_kem_keypair(uint8_t* pk, uint8_t* sk) {
     indcpa_keypair(pk, sk);                             // PKE keygen 스킴을 통해 pk, sk 생성
-    randombytes(sk + PKE_SECRETKEY_BYTES, T_BYTES);     // 암묵적 거부를 위한 random값 t 생성
+    randombytes(sk + PKE_SECRETKEY_BYTES, T_BYTES);     // 암묵적 거부를 위한 random값 t 생성 
     for (int i = 0; i < PUBLICKEY_BYTES; i++)           
         sk[i + PKE_SECRETKEY_BYTES + T_BYTES] = pk[i];  // sk = sk | t | pk 로 저장
 }
@@ -1850,6 +1858,7 @@ int crypto_kem_enc(uint8_t* ctxt, uint8_t* ss, const uint8_t* pk) {
 }
 
 
+// ctxt : c1 | c2  ,  sk : sk | t | pk
 int crypto_kem_dec(uint8_t* ss, const uint8_t* ctxt, const uint8_t* sk) {
     uint8_t mu[DELTA_BYTES] = { 0 };
     uint8_t buf[DELTA_BYTES + CRYPTO_BYTES] = { 0 }; // shared secret and seed
@@ -1857,25 +1866,25 @@ int crypto_kem_dec(uint8_t* ss, const uint8_t* ctxt, const uint8_t* sk) {
     uint8_t hash_res[SHA3_256_HashSize] = { 0 };
     const uint8_t* pk = sk + PKE_SECRETKEY_BYTES + T_BYTES;
 
-    indcpa_dec(mu, sk, ctxt);
-    hash_h(hash_res, pk, PUBLICKEY_BYTES);
-    hash_g(buf, DELTA_BYTES + CRYPTO_BYTES, mu, DELTA_BYTES, hash_res,
+    indcpa_dec(mu, sk, ctxt);                                           // c1, c2, s를 통해 mu(ssk seed) 복원
+    hash_h(hash_res, pk, PUBLICKEY_BYTES);                              // H(pk)
+    hash_g(buf, DELTA_BYTES + CRYPTO_BYTES, mu, DELTA_BYTES, hash_res,  // seed | SSK = G(mu, H(pk))
         SHA3_256_HashSize);
 
     uint8_t ctxt_temp[CIPHERTEXT_BYTES] = { 0 };
-    indcpa_enc(ctxt_temp, pk, mu, buf);
+    indcpa_enc(ctxt_temp, pk, mu, buf);                                 // pk, 복호화한 mu, 이를 통해 생성한 r seed로 c1', c2'을 생성
 
 
-    int fail = verify(ctxt, ctxt_temp, CIPHERTEXT_BYTES);
+    int fail = verify(ctxt, ctxt_temp, CIPHERTEXT_BYTES);               // verify 성공시 0, 실패시 1을 fail에 저장
 
-    hash_h(hash_res, ctxt, CIPHERTEXT_BYTES);
-    hash_g(buf_tmp, DELTA_BYTES + CRYPTO_BYTES,
+    hash_h(hash_res, ctxt, CIPHERTEXT_BYTES);                           // H(c1,c2)
+    hash_g(buf_tmp, DELTA_BYTES + CRYPTO_BYTES,                         // G(d | H(ct))를 통해 암묵적 거부를 위한 SSK' 생성
         sk + 2 * MODULE_RANK + SKPOLYVEC_BYTES, T_BYTES, hash_res,
         SHA3_256_HashSize);
 
     memset(ss, 0, CRYPTO_BYTES);
-    cmov(buf + DELTA_BYTES, buf_tmp + DELTA_BYTES, CRYPTO_BYTES, fail);
-    cmov(ss, buf + DELTA_BYTES, CRYPTO_BYTES, 1);
+    cmov(buf + DELTA_BYTES, buf_tmp + DELTA_BYTES, CRYPTO_BYTES, fail); // SSK를 저장하고 있는 buf[32~63]에 verify가 성공했다면 그대로, 실패했다면 SSK'을 저장
+    cmov(ss, buf + DELTA_BYTES, CRYPTO_BYTES, 1);                       // 저장한 SSK를 ss에 저장
     return 0;
 }
 
@@ -1893,6 +1902,14 @@ int main()
     crypto_kem_enc(ctxt, ss, pk);
     crypto_kem_dec(ss2, ctxt, sk);
 
+
+    uint8_t r = 1;
+
+    printf("%d\n", ((-(int64_t)(r))) >> 63);    // 검증 실패시 1, 성공시 0을 return
+    printf("%d\n", ((-(uint64_t)(r))) >> 63);
+    printf("%d\n", ((-(int64_t)(r))) >> 63 & 0x01) ;
+
+    printf("\n\n");
     for (int i = 0; i < 32; i++)
     {
         printf("%02x ", ss[i]);
