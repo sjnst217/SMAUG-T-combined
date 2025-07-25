@@ -1879,7 +1879,7 @@ int crypto_kem_dec(uint8_t* ss, const uint8_t* ctxt, const uint8_t* sk) {
 
     hash_h(hash_res, ctxt, CIPHERTEXT_BYTES);                           // H(c1,c2)
     hash_g(buf_tmp, DELTA_BYTES + CRYPTO_BYTES,                         // G(d | H(ct))를 통해 암묵적 거부를 위한 SSK' 생성
-        sk + 2 * MODULE_RANK + SKPOLYVEC_BYTES, T_BYTES, hash_res,
+        sk + SKPOLYVEC_BYTES, T_BYTES, hash_res,
         SHA3_256_HashSize);
 
     memset(ss, 0, CRYPTO_BYTES);
@@ -1901,13 +1901,6 @@ int main()
     crypto_kem_keypair(pk, sk);
     crypto_kem_enc(ctxt, ss, pk);
     crypto_kem_dec(ss2, ctxt, sk);
-
-
-    uint8_t r = 1;
-
-    printf("%d\n", ((-(int64_t)(r))) >> 63);    // 검증 실패시 1, 성공시 0을 return
-    printf("%d\n", ((-(uint64_t)(r))) >> 63);
-    printf("%d\n", ((-(int64_t)(r))) >> 63 & 0x01) ;
 
     printf("\n\n");
     for (int i = 0; i < 32; i++)
