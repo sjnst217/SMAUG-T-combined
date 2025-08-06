@@ -27,7 +27,7 @@
 #define KARATSUBA_N 64
 
 
-#define RAND 0
+#define RAND 1
 
 #include <Windows.h>
 #include <wincrypt.h> /* CryptAcquireContext, CryptGenRandom */
@@ -64,14 +64,13 @@ static int randombytes(void* buf, const size_t n)
     return 0;
 }
 #elif RAND == 1
-void randombytes(uint8_t* buf, int len)
-{
-    for (int i = 0; i < len; i++)
-    {
-        *buf = i;
-        buf++;
-    }
+
+int randombytes(uint8_t *x, size_t xlen) {
+	for (uint16_t cnt_i = 0; cnt_i < xlen; cnt_i++) x[cnt_i] = cnt_i * xlen;
+
+	return xlen;
 }
+
 #endif
 
 
@@ -1396,10 +1395,10 @@ static void cbd(poly* r, const uint8_t buf[CBDSEED_BYTES]) {
         t = load32_littleendian(buf + 4 * i);
 
         for (j = 0; j < 16; j++) {
-            a = (t >> (2 * j + 0)) & 0x01;
-            b = (t >> (2 * j + 1)) & 0x01;
-            r->coeffs[16 * i + j] = a - b;
-        }
+            a = (t >> (2 * j + 0)) & 0x01;  // t의 0101 0101 0101 0101 0101 0101 0101 0101 을 a에 저장
+            b = (t >> (2 * j + 1)) & 0x01;  // t의 1010 1010 1010 1010 1010 1010 1010 1010 을 b에 저장
+            r->coeffs[16 * i + j] = a - b;  // a - b를 진행하는 것으로 0 0 -> 0, 1 1 -> 0, 0 1 -> -1, 1 0 -> 1 으로 저장
+        }                                   // 즉, 1(1/4), -1(1/4), 0(1/2) 인 spCBD이다.
     }
 }
 #endif
@@ -1643,7 +1642,7 @@ void genAx(polyvec A[MODULE_RANK], const uint8_t seed[PKSEED_BYTES]) {
             tmpseed[32] = i;                                        
             tmpseed[33] = j;
             shake128(buf, PKPOLY_BYTES, tmpseed, PKSEED_BYTES + 2); // buf에 값을 생성해서
-            bytes_to_Rq(&A[i].vec[j], buf);                         // A에 값을 저장, (상위 10bit -> 실제 A, 하위 6bit -> 의미 없는 값)
+            bytes_to_Rq(&A[i].vec[j], buf);                         // A에 값을 저장, (상위 10bit -> 실제 A, 하위 6bit -> 00 0000 으로 저장되어 있음)
         }
     }
 }
@@ -1879,7 +1878,7 @@ int crypto_kem_dec(uint8_t* ss, const uint8_t* ctxt, const uint8_t* sk) {
 
     hash_h(hash_res, ctxt, CIPHERTEXT_BYTES);                           // H(c1,c2)
     hash_g(buf_tmp, DELTA_BYTES + CRYPTO_BYTES,                         // G(d | H(ct))를 통해 암묵적 거부를 위한 SSK' 생성
-        sk + SKPOLYVEC_BYTES, T_BYTES, hash_res,
+        sk + PKE_SECRETKEY_BYTES, T_BYTES, hash_res,
         SHA3_256_HashSize);
 
     memset(ss, 0, CRYPTO_BYTES);
