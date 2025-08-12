@@ -8,8 +8,8 @@
 #define LOG_LWE_N 8             // log dim
 #define LWE_N (1 << LOG_LWE_N)  // LWE dim and LWR dim
 
-#define SMAUG_MODE 5
-#define RAND 1          // 0 -> window rand, 1 -> 직접 입력 
+#define SMAUG_MODE 1
+#define RAND 0          // 0 -> window rand, 1 -> 직접 입력 
 #define MUL_MOD 1       // 0 -> Original   , 1 -> NTT
 
 

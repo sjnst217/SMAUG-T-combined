@@ -1004,220 +1004,200 @@ static const int32_t zetas[LWE_N] = {
     -3038916, 3523897, 3866901, 269760, 2213111, -975884, 1717735, 472078,
     -426683, 1723600, -1803090, 1910376, -1667432, -1104333, -260646, -3833893,
     -2939036, -2235985, -420899, -2286327, 183443, -976891, 1612842, -3545687,
-    -554416, 3919660, -48306, -1362209, 3937738, 1400424, -846154, 1976782};
+    -554416, 3919660, -48306, -1362209, 3937738, 1400424, -846154, 1976782 };
 
 int32_t montgomery_reduce(int64_t a) {
-	int32_t t;
-	t = (int32_t)((uint64_t)a * (uint64_t)NTT_QINV);
-	t = (a - (int64_t)t * NTT_Q) >> 32;
-	return t;
+    int32_t t;
+    t = (int32_t)((uint64_t)a * (uint64_t)NTT_QINV);
+    t = (a - (int64_t)t * NTT_Q) >> 32;
+    return t;
 }
 
 //* CT-butterfly in Forward-NTT
 void ntt(int32_t a[LWE_N]) {
-	unsigned int len, start, j, k;
-	int32_t zeta, t;
+    unsigned int len, start, j, k;
+    int32_t zeta, t;
 
-	k = 0;
-	for (len = 128; len > 0; len >>= 1) {
-		for (start = 0; start < LWE_N; start = j + len) {
-			zeta = zetas[++k];
-			for (j = start; j < start + len; ++j) {
-				t = montgomery_reduce((int64_t)zeta * a[j + len]);
-				a[j + len] = a[j] - t;
-				a[j] = a[j] + t;
-			}
-		}
-	}
+    k = 0;
+    for (len = 128; len > 0; len >>= 1) {
+        for (start = 0; start < LWE_N; start = j + len) {
+            zeta = zetas[++k];
+            for (j = start; j < start + len; ++j) {
+                t = montgomery_reduce((int64_t)zeta * a[j + len]);
+                a[j + len] = a[j] - t;
+                a[j] = a[j] + t;
+            }
+        }
+    }
 }
 
 void inv_ntt(int32_t a[LWE_N]) {
-	unsigned int start, len, j, k;
-	int32_t t, zeta;
-	const int32_t f = 41978;	// mont^2/256
+    unsigned int start, len, j, k;
+    int32_t t, zeta;
+    const int32_t f = 41978;	// mont^2/256
 
-	k = 256;
-	for (len = 1; len < LWE_N; len <<= 1) {
-		for (start = 0; start < LWE_N; start = j + len) {
-			zeta = -zetas[--k];
-			for (j = start; j < start + len; ++j) {
-				t = a[j];
-				a[j] = t + a[j + len];
-				a[j + len] = t - a[j + len];
-				a[j + len] = montgomery_reduce((int64_t)zeta * a[j + len]);
-			}
-		}
-	}
+    k = 256;
+    for (len = 1; len < LWE_N; len <<= 1) {
+        for (start = 0; start < LWE_N; start = j + len) {
+            zeta = -zetas[--k];
+            for (j = start; j < start + len; ++j) {
+                t = a[j];
+                a[j] = t + a[j + len];
+                a[j + len] = t - a[j + len];
+                a[j + len] = montgomery_reduce((int64_t)zeta * a[j + len]);
+            }
+        }
+    }
 
-	for (j = 0; j < LWE_N; ++j) {
-		a[j] = montgomery_reduce((int64_t)f * a[j]);
-	}
+    for (j = 0; j < LWE_N; ++j) {
+        a[j] = montgomery_reduce((int64_t)f * a[j]);
+    }
 }
 
 
-void ntt_mul(int32_t *r, int32_t *a, int32_t *b) {
-	for (int i = 0; i < LWE_N; i++) {
-		r[i] = montgomery_reduce((int64_t)a[i] * b[i]);
-	}
+// void ntt_mul(int32_t* r, int32_t* a, int32_t* b) {
+//     for (int i = 0; i < LWE_N; i++) {
+//         r[i] = montgomery_reduce((int64_t)a[i] * b[i]);
+//     }
+// }
+
+void ntt_mul_acc(int32_t* r, int32_t* a, int32_t* b) {
+    for (int i = 0; i < LWE_N; i++) {
+        r[i] += montgomery_reduce((int64_t)a[i] * b[i]);
+    }
 }
 
-void ntt_mul_acc(int32_t *r, int32_t *a, int32_t *b) {
-	for (int i = 0; i < LWE_N; i++) {
-		r[i] += montgomery_reduce((int64_t)a[i] * b[i]);
-	}
+void vec_vec_mult_add(poly* r, const polyvec* a, const polyvec* b,
+    const uint8_t mod) {
+    unsigned int i, j;
+    poly res;
+
+    int32_t al_tmp[LWE_N] = { 0x00 };
+    int32_t b_tmp[LWE_N] = { 0x00 };
+    int32_t res_tmp[LWE_N] = { 0x00 };
+
+    for (i = 0; i < MODULE_RANK; ++i) {
+        for (j = 0; j < LWE_N; ++j) {
+            al_tmp[j] = (int32_t)(int16_t)(a->vec[i].coeffs[j] >> mod);
+            b_tmp[j] = (int32_t)(int16_t)(b->vec[i].coeffs[j]);
+        }
+
+        ntt(al_tmp);
+        ntt(b_tmp);
+
+        // if (i == 0) {
+        //     ntt_mul(res_tmp, al_tmp, b_tmp);
+        // }
+        // else {
+        //     ntt_mul_acc(res_tmp, al_tmp, b_tmp);
+        // }
+        ntt_mul_acc(res_tmp, al_tmp, b_tmp);
+    }
+
+    inv_ntt(res_tmp);
+    for (j = 0; j < LWE_N; ++j) {
+        //! MLWR 특성으로 저장할 때 left shift, 사용할 때 right shift
+        //! 따라서 원래 q로 되돌리지 않아도 된다!
+        //! res.coeffs[j] = (uint16_t)(res_tmp[j] & ((1 << LOG_Q) - 1));
+        res.coeffs[j] = (uint16_t)(res_tmp[j]);
+        res.coeffs[j] <<= mod;
+    }
+
+    poly_add(r, r, &res);
 }
 
-/*************************************************
- * Name:        vec_vec_mult_add
- *
- * Description: Multiply two vectors of polynomials and add the result to output
- *              polynomial
- *
- * Arguments:   - poly *r: pointer to output polynomial
- *              - polyvec *a: pointer to input vector of polynomials
- *              - polyvec *b: pointer to input vector of polynomials
- *              - uint8_t mod: modulus (16-LOG_P) or (16-LOG_Q)
- **************************************************/
-void vec_vec_mult_add(poly *r, const polyvec *a, const polyvec *b,
-											const uint8_t mod) {
-	unsigned int i, j;
-	poly res;
+void matrix_vec_mult_add(polyvec* r, const polyvec a[MODULE_RANK],
+    const polyvec* b) {
+    unsigned int i, j, k;
+    // polyvec at;
 
-	int32_t al_tmp[LWE_N] = {0x00};
-	int32_t b_tmp[LWE_N] = {0x00};
-	int32_t res_tmp[LWE_N] = {0x00};
+    int32_t at_tmp[LWE_N] = { 0x00 };
+    int32_t b_tmp[MODULE_RANK][LWE_N] = { 0x00 };
 
-	for (i = 0; i < MODULE_RANK; ++i) {
-		for (j = 0; j < LWE_N; ++j) {
-			al_tmp[j] = (int32_t)(int16_t)(a->vec[i].coeffs[j] >> mod);
-			b_tmp[j] = (int32_t)(int16_t)(b->vec[i].coeffs[j]);
-		}
 
-		ntt(al_tmp);
-		ntt(b_tmp);
+    //* ntt(b)
+    for (i = 0; i < MODULE_RANK; i++) {
+        for (j = 0; j < LWE_N; j++) {
+            b_tmp[i][j] = b->vec[i].coeffs[j];
+        }
+        ntt(b_tmp[i]);
+    }
 
-		if (i == 0) {
-			ntt_mul(res_tmp, al_tmp, b_tmp);
-		} else {
-			ntt_mul_acc(res_tmp, al_tmp, b_tmp);
-		}
-	}
+    for (i = 0; i < MODULE_RANK; ++i) {
+        int32_t res_tmp[LWE_N] = { 0x00 };
+        for (j = 0; j < MODULE_RANK; ++j) {
+            for (k = 0; k < LWE_N; ++k) {
+                at_tmp[k] = (int32_t)(int16_t)(a[j].vec[i].coeffs[k] >> _16_LOG_Q);
+            }
 
-	inv_ntt(res_tmp);
-	for (j = 0; j < LWE_N; ++j) {
-		//! MLWR 특성으로 저장할 때 left shift, 사용할 때 right shift
-		//! 따라서 원래 q로 되돌리지 않아도 된다!
-		//! res.coeffs[j] = (uint16_t)(res_tmp[j] & ((1 << LOG_Q) - 1));
-		res.coeffs[j] = (uint16_t)(res_tmp[j]);
-		res.coeffs[j] <<= mod;
-	}
+            ntt(at_tmp);
 
-	poly_add(r, r, &res);
+            // if (j == 0) {
+            //     ntt_mul(res_tmp, at_tmp, b_tmp[j]);
+            // }
+            // else {
+            //     ntt_mul_acc(res_tmp, at_tmp, b_tmp[j]);
+            // }
+            ntt_mul_acc(res_tmp, at_tmp, b_tmp[j]);
+        }
+
+        inv_ntt(res_tmp);
+        for (j = 0; j < LWE_N; ++j) {
+            // r->vec[i].coeffs[j] = (uint16_t)(res_tmp[j] & ((1 << LOG_Q) - 1));
+            r->vec[i].coeffs[j] = (uint16_t)res_tmp[j];
+            r->vec[i].coeffs[j] <<= _16_LOG_Q;
+        }
+    }
 }
 
-/*************************************************
- * Name:        matrix_vec_mult_add
- *
- * Description: Transpose the matrix of polynomial and multiply it with the
- *              vector of polynomials.
- *
- * Arguments:   - polyvec *r: pointer to output vector of polynomials
- *              - polyvec *a: pointer to input matrix of polynomials
- *              - polyvec *b: pointer to input vector of polynomials
- **************************************************/
-void matrix_vec_mult_add(polyvec *r, const polyvec a[MODULE_RANK],
-												 const polyvec *b) {
-	unsigned int i, j, k;
-	// polyvec at;
+void matrix_vec_mult_sub(polyvec* r, const polyvec a[MODULE_RANK],
+    const polyvec* b) {
+    unsigned int i, j, k;
+    // polyvec al;
+    poly res;
 
-	int32_t at_tmp[LWE_N] = {0x00};
-	int32_t b_tmp[MODULE_RANK][LWE_N] = {0x00};
-	int32_t res_tmp[LWE_N] = {0x00};
+    int32_t al_tmp[LWE_N] = { 0x00 };
+    int32_t b_tmp[MODULE_RANK][LWE_N] = { 0x00 };
+    
 
-	//* ntt(b)
-	for (i = 0; i < MODULE_RANK; i++) {
-		for (j = 0; j < LWE_N; j++) {
-			b_tmp[i][j] = b->vec[i].coeffs[j];
-		}
-		ntt(b_tmp[i]);
-	}
+    //* ntt(b)
+    for (i = 0; i < MODULE_RANK; i++) {
+        for (j = 0; j < LWE_N; j++) {
+            b_tmp[i][j] = b->vec[i].coeffs[j];
+        }
+        ntt(b_tmp[i]);
+    }
 
-	for (i = 0; i < MODULE_RANK; ++i) {
-		for (j = 0; j < MODULE_RANK; ++j) {
-			for (k = 0; k < LWE_N; ++k) {
-				at_tmp[k] = (int32_t)(int16_t)(a[j].vec[i].coeffs[k] >> _16_LOG_Q);
-			}
+    for (i = 0; i < MODULE_RANK; ++i) {
+        int32_t res_tmp[LWE_N] = { 0x00 };
+        for (j = 0; j < MODULE_RANK; ++j) {
+            for (k = 0; k < LWE_N; ++k) {
+                al_tmp[k] = (int32_t)(int16_t)(a[i].vec[j].coeffs[k] >> _16_LOG_Q);
+            }
 
-			ntt(at_tmp);
+            ntt(al_tmp);
 
-			if (j == 0) {
-				ntt_mul(res_tmp, at_tmp, b_tmp[j]);
-			} else {
-				ntt_mul_acc(res_tmp, at_tmp, b_tmp[j]);
-			}
-		}
+            // if (j == 0) {
+            //     ntt_mul(res_tmp, al_tmp, b_tmp[j]);
+            // }
+            // else {
+            //     ntt_mul_acc(res_tmp, al_tmp, b_tmp[j]);
+            // }
 
-		inv_ntt(res_tmp);
-		for (j = 0; j < LWE_N; ++j) {
-			// r->vec[i].coeffs[j] = (uint16_t)(res_tmp[j] & ((1 << LOG_Q) - 1));
-			r->vec[i].coeffs[j] = (uint16_t)res_tmp[j];
-			r->vec[i].coeffs[j] <<= _16_LOG_Q;
-		}
-	}
+            ntt_mul_acc(res_tmp, al_tmp, b_tmp[j]);
+
+        }
+        inv_ntt(res_tmp);
+        for (j = 0; j < LWE_N; ++j) {
+            // res.coeffs[j] = (uint16_t)(res_tmp[j] & ((1 << LOG_Q) - 1));
+            res.coeffs[j] = (uint16_t)res_tmp[j];
+            res.coeffs[j] <<= _16_LOG_Q;
+        }
+
+        poly_sub(&r->vec[i], &r->vec[i], &res);
+    }
 }
 
-/*************************************************
- * Name:        matrix_vec_mult_sub
- *
- * Description: Multiply the matrix of polynomial with the vector of polynomial
- *              and subtract the result to output vector of polynomials.
- *
- * Arguments:   - polyvec *r: pointer to in/output vector of polynomials
- *              - polyvec *a: pointer to input matrix of polynomials
- *              - polyvec *b: pointer to input vector of polynomials
- **************************************************/
-void matrix_vec_mult_sub(polyvec *r, const polyvec a[MODULE_RANK],
-												 const polyvec *b) {
-	unsigned int i, j, k;
-	// polyvec al;
-	poly res;
-
-	int32_t al_tmp[LWE_N] = {0x00};
-	int32_t b_tmp[MODULE_RANK][LWE_N] = {0x00};
-	int32_t res_tmp[LWE_N] = {0x00};
-
-	//* ntt(b)
-	for (i = 0; i < MODULE_RANK; i++) {
-		for (j = 0; j < LWE_N; j++) {
-			b_tmp[i][j] = b->vec[i].coeffs[j];
-		}
-		ntt(b_tmp[i]);
-	}
-
-	for (i = 0; i < MODULE_RANK; ++i) {
-		for (j = 0; j < MODULE_RANK; ++j) {
-			for (k = 0; k < LWE_N; ++k) {
-				al_tmp[k] = (int32_t)(int16_t)(a[i].vec[j].coeffs[k] >> _16_LOG_Q);
-			}
-
-			ntt(al_tmp);
-
-			if (j == 0) {
-				ntt_mul(res_tmp, al_tmp, b_tmp[j]);
-			} else {
-				ntt_mul_acc(res_tmp, al_tmp, b_tmp[j]);
-			}
-		}
-		inv_ntt(res_tmp);
-		for (j = 0; j < LWE_N; ++j) {
-			// res.coeffs[j] = (uint16_t)(res_tmp[j] & ((1 << LOG_Q) - 1));
-			res.coeffs[j] = (uint16_t)res_tmp[j];
-			res.coeffs[j] <<= _16_LOG_Q;
-		}
-
-		poly_sub(&r->vec[i], &r->vec[i], &res);
-	}
-}
 
 #endif
 
