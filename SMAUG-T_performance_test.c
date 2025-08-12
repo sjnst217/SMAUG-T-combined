@@ -68,10 +68,10 @@ static int randombytes(void* buf, const size_t n)
 }
 #elif RAND == 1
 
-int randombytes(uint8_t *x, size_t xlen) {
-	for (uint16_t cnt_i = 0; cnt_i < xlen; cnt_i++) x[cnt_i] = cnt_i;
+int randombytes(uint8_t* x, size_t xlen) {
+    for (uint16_t cnt_i = 0; cnt_i < xlen; cnt_i++) x[cnt_i] = cnt_i;
 
-	return xlen;
+    return xlen;
 }
 
 #endif
@@ -454,7 +454,7 @@ static void keccak_finalize(uint64_t s[25], unsigned int pos, unsigned int r,
 
 static unsigned int keccak_squeeze(uint8_t* out, size_t outlen, uint64_t s[25],
     unsigned int pos, unsigned int r) {
-    
+
     unsigned int i;
 
     while (outlen) {
@@ -619,7 +619,7 @@ int verify(const uint8_t* a, const uint8_t* b, size_t len) {
         r |= a[i] ^ b[i];       // c1 = c1', c2 = c2' 일 경우 r = 0, 다르면 r = 1
 
 
-    return ((-(uint64_t)(r))) >> 63;    // 검증 실패시 1, 성공시 0을 return
+    return ((uint64_t)(-(int64_t)(r))) >> 63;    // 검증 실패시 1, 성공시 0을 return
 }
 
 void cmov(uint8_t* r, const uint8_t* x, size_t len, uint8_t b) {
@@ -927,7 +927,7 @@ void vec_vec_mult_add(poly* r, const polyvec* a, const polyvec* b,
 
     memset(&res, 0, sizeof(poly));
     vec_vec_mult(&res, &al, b);         // res = b * r  
-                                        // dec의 경우 c1 * s
+    // dec의 경우 c1 * s
     for (j = 0; j < LWE_N; ++j)
         res.coeffs[j] <<= mod;          // res = b * r << mod 다시 최대 bit를 모두 쓰도록 해줌(ex) uint16_t 이기 때문에 16bit를 쓰도록)
 
@@ -1004,67 +1004,67 @@ static const int32_t zetas[LWE_N] = {
     -3038916, 3523897, 3866901, 269760, 2213111, -975884, 1717735, 472078,
     -426683, 1723600, -1803090, 1910376, -1667432, -1104333, -260646, -3833893,
     -2939036, -2235985, -420899, -2286327, 183443, -976891, 1612842, -3545687,
-    -554416, 3919660, -48306, -1362209, 3937738, 1400424, -846154, 1976782};
+    -554416, 3919660, -48306, -1362209, 3937738, 1400424, -846154, 1976782 };
 
 int32_t montgomery_reduce(int64_t a) {
-	int32_t t;
-	t = (int32_t)((uint64_t)a * (uint64_t)NTT_QINV);
-	t = (a - (int64_t)t * NTT_Q) >> 32;
-	return t;
+    int32_t t;
+    t = (int32_t)((uint64_t)a * (uint64_t)NTT_QINV);
+    t = (a - (int64_t)t * NTT_Q) >> 32;
+    return t;
 }
 
 //* CT-butterfly in Forward-NTT
 void ntt(int32_t a[LWE_N]) {
-	unsigned int len, start, j, k;
-	int32_t zeta, t;
+    unsigned int len, start, j, k;
+    int32_t zeta, t;
 
-	k = 0;
-	for (len = 128; len > 0; len >>= 1) {
-		for (start = 0; start < LWE_N; start = j + len) {
-			zeta = zetas[++k];
-			for (j = start; j < start + len; ++j) {
-				t = montgomery_reduce((int64_t)zeta * a[j + len]);
-				a[j + len] = a[j] - t;
-				a[j] = a[j] + t;
-			}
-		}
-	}
+    k = 0;
+    for (len = 128; len > 0; len >>= 1) {
+        for (start = 0; start < LWE_N; start = j + len) {
+            zeta = zetas[++k];
+            for (j = start; j < start + len; ++j) {
+                t = montgomery_reduce((int64_t)zeta * a[j + len]);
+                a[j + len] = a[j] - t;
+                a[j] = a[j] + t;
+            }
+        }
+    }
 }
 
 void inv_ntt(int32_t a[LWE_N]) {
-	unsigned int start, len, j, k;
-	int32_t t, zeta;
-	const int32_t f = 41978;	// mont^2/256
+    unsigned int start, len, j, k;
+    int32_t t, zeta;
+    const int32_t f = 41978;	// mont^2/256
 
-	k = 256;
-	for (len = 1; len < LWE_N; len <<= 1) {
-		for (start = 0; start < LWE_N; start = j + len) {
-			zeta = -zetas[--k];
-			for (j = start; j < start + len; ++j) {
-				t = a[j];
-				a[j] = t + a[j + len];
-				a[j + len] = t - a[j + len];
-				a[j + len] = montgomery_reduce((int64_t)zeta * a[j + len]);
-			}
-		}
-	}
+    k = 256;
+    for (len = 1; len < LWE_N; len <<= 1) {
+        for (start = 0; start < LWE_N; start = j + len) {
+            zeta = -zetas[--k];
+            for (j = start; j < start + len; ++j) {
+                t = a[j];
+                a[j] = t + a[j + len];
+                a[j + len] = t - a[j + len];
+                a[j + len] = montgomery_reduce((int64_t)zeta * a[j + len]);
+            }
+        }
+    }
 
-	for (j = 0; j < LWE_N; ++j) {
-		a[j] = montgomery_reduce((int64_t)f * a[j]);
-	}
+    for (j = 0; j < LWE_N; ++j) {
+        a[j] = montgomery_reduce((int64_t)f * a[j]);
+    }
 }
 
 
-void ntt_mul(int32_t *r, int32_t *a, int32_t *b) {
-	for (int i = 0; i < LWE_N; i++) {
-		r[i] = montgomery_reduce((int64_t)a[i] * b[i]);
-	}
+void ntt_mul(int32_t* r, int32_t* a, int32_t* b) {
+    for (int i = 0; i < LWE_N; i++) {
+        r[i] = montgomery_reduce((int64_t)a[i] * b[i]);
+    }
 }
 
-void ntt_mul_acc(int32_t *r, int32_t *a, int32_t *b) {
-	for (int i = 0; i < LWE_N; i++) {
-		r[i] += montgomery_reduce((int64_t)a[i] * b[i]);
-	}
+void ntt_mul_acc(int32_t* r, int32_t* a, int32_t* b) {
+    for (int i = 0; i < LWE_N; i++) {
+        r[i] += montgomery_reduce((int64_t)a[i] * b[i]);
+    }
 }
 
 /*************************************************
@@ -1078,41 +1078,42 @@ void ntt_mul_acc(int32_t *r, int32_t *a, int32_t *b) {
  *              - polyvec *b: pointer to input vector of polynomials
  *              - uint8_t mod: modulus (16-LOG_P) or (16-LOG_Q)
  **************************************************/
-void vec_vec_mult_add(poly *r, const polyvec *a, const polyvec *b,
-											const uint8_t mod) {
-	unsigned int i, j;
-	poly res;
+void vec_vec_mult_add(poly* r, const polyvec* a, const polyvec* b,
+    const uint8_t mod) {
+    unsigned int i, j;
+    poly res;
 
-	int32_t al_tmp[LWE_N] = {0x00};
-	int32_t b_tmp[LWE_N] = {0x00};
-	int32_t res_tmp[LWE_N] = {0x00};
+    int32_t al_tmp[LWE_N] = { 0x00 };
+    int32_t b_tmp[LWE_N] = { 0x00 };
+    int32_t res_tmp[LWE_N] = { 0x00 };
 
-	for (i = 0; i < MODULE_RANK; ++i) {
-		for (j = 0; j < LWE_N; ++j) {
-			al_tmp[j] = (int32_t)(int16_t)(a->vec[i].coeffs[j] >> mod);
-			b_tmp[j] = (int32_t)(int16_t)(b->vec[i].coeffs[j]);
-		}
+    for (i = 0; i < MODULE_RANK; ++i) {
+        for (j = 0; j < LWE_N; ++j) {
+            al_tmp[j] = (int32_t)(int16_t)(a->vec[i].coeffs[j] >> mod);
+            b_tmp[j] = (int32_t)(int16_t)(b->vec[i].coeffs[j]);
+        }
 
-		ntt(al_tmp);
-		ntt(b_tmp);
+        ntt(al_tmp);
+        ntt(b_tmp);
 
-		if (i == 0) {
-			ntt_mul(res_tmp, al_tmp, b_tmp);
-		} else {
-			ntt_mul_acc(res_tmp, al_tmp, b_tmp);
-		}
-	}
+        if (i == 0) {
+            ntt_mul(res_tmp, al_tmp, b_tmp);
+        }
+        else {
+            ntt_mul_acc(res_tmp, al_tmp, b_tmp);
+        }
+    }
 
-	inv_ntt(res_tmp);
-	for (j = 0; j < LWE_N; ++j) {
-		//! MLWR 특성으로 저장할 때 left shift, 사용할 때 right shift
-		//! 따라서 원래 q로 되돌리지 않아도 된다!
-		//! res.coeffs[j] = (uint16_t)(res_tmp[j] & ((1 << LOG_Q) - 1));
-		res.coeffs[j] = (uint16_t)(res_tmp[j]);
-		res.coeffs[j] <<= mod;
-	}
+    inv_ntt(res_tmp);
+    for (j = 0; j < LWE_N; ++j) {
+        //! MLWR 특성으로 저장할 때 left shift, 사용할 때 right shift
+        //! 따라서 원래 q로 되돌리지 않아도 된다!
+        //! res.coeffs[j] = (uint16_t)(res_tmp[j] & ((1 << LOG_Q) - 1));
+        res.coeffs[j] = (uint16_t)(res_tmp[j]);
+        res.coeffs[j] <<= mod;
+    }
 
-	poly_add(r, r, &res);
+    poly_add(r, r, &res);
 }
 
 /*************************************************
@@ -1125,45 +1126,46 @@ void vec_vec_mult_add(poly *r, const polyvec *a, const polyvec *b,
  *              - polyvec *a: pointer to input matrix of polynomials
  *              - polyvec *b: pointer to input vector of polynomials
  **************************************************/
-void matrix_vec_mult_add(polyvec *r, const polyvec a[MODULE_RANK],
-												 const polyvec *b) {
-	unsigned int i, j, k;
-	// polyvec at;
+void matrix_vec_mult_add(polyvec* r, const polyvec a[MODULE_RANK],
+    const polyvec* b) {
+    unsigned int i, j, k;
+    // polyvec at;
 
-	int32_t at_tmp[LWE_N] = {0x00};
-	int32_t b_tmp[MODULE_RANK][LWE_N] = {0x00};
-	int32_t res_tmp[LWE_N] = {0x00};
+    int32_t at_tmp[LWE_N] = { 0x00 };
+    int32_t b_tmp[MODULE_RANK][LWE_N] = { 0x00 };
+    int32_t res_tmp[LWE_N] = { 0x00 };
 
-	//* ntt(b)
-	for (i = 0; i < MODULE_RANK; i++) {
-		for (j = 0; j < LWE_N; j++) {
-			b_tmp[i][j] = b->vec[i].coeffs[j];
-		}
-		ntt(b_tmp[i]);
-	}
+    //* ntt(b)
+    for (i = 0; i < MODULE_RANK; i++) {
+        for (j = 0; j < LWE_N; j++) {
+            b_tmp[i][j] = b->vec[i].coeffs[j];
+        }
+        ntt(b_tmp[i]);
+    }
 
-	for (i = 0; i < MODULE_RANK; ++i) {
-		for (j = 0; j < MODULE_RANK; ++j) {
-			for (k = 0; k < LWE_N; ++k) {
-				at_tmp[k] = (int32_t)(int16_t)(a[j].vec[i].coeffs[k] >> _16_LOG_Q);
-			}
+    for (i = 0; i < MODULE_RANK; ++i) {
+        for (j = 0; j < MODULE_RANK; ++j) {
+            for (k = 0; k < LWE_N; ++k) {
+                at_tmp[k] = (int32_t)(int16_t)(a[j].vec[i].coeffs[k] >> _16_LOG_Q);
+            }
 
-			ntt(at_tmp);
+            ntt(at_tmp);
 
-			if (j == 0) {
-				ntt_mul(res_tmp, at_tmp, b_tmp[j]);
-			} else {
-				ntt_mul_acc(res_tmp, at_tmp, b_tmp[j]);
-			}
-		}
+            if (j == 0) {
+                ntt_mul(res_tmp, at_tmp, b_tmp[j]);
+            }
+            else {
+                ntt_mul_acc(res_tmp, at_tmp, b_tmp[j]);
+            }
+        }
 
-		inv_ntt(res_tmp);
-		for (j = 0; j < LWE_N; ++j) {
-			// r->vec[i].coeffs[j] = (uint16_t)(res_tmp[j] & ((1 << LOG_Q) - 1));
-			r->vec[i].coeffs[j] = (uint16_t)res_tmp[j];
-			r->vec[i].coeffs[j] <<= _16_LOG_Q;
-		}
-	}
+        inv_ntt(res_tmp);
+        for (j = 0; j < LWE_N; ++j) {
+            // r->vec[i].coeffs[j] = (uint16_t)(res_tmp[j] & ((1 << LOG_Q) - 1));
+            r->vec[i].coeffs[j] = (uint16_t)res_tmp[j];
+            r->vec[i].coeffs[j] <<= _16_LOG_Q;
+        }
+    }
 }
 
 /*************************************************
@@ -1176,47 +1178,48 @@ void matrix_vec_mult_add(polyvec *r, const polyvec a[MODULE_RANK],
  *              - polyvec *a: pointer to input matrix of polynomials
  *              - polyvec *b: pointer to input vector of polynomials
  **************************************************/
-void matrix_vec_mult_sub(polyvec *r, const polyvec a[MODULE_RANK],
-												 const polyvec *b) {
-	unsigned int i, j, k;
-	// polyvec al;
-	poly res;
+void matrix_vec_mult_sub(polyvec* r, const polyvec a[MODULE_RANK],
+    const polyvec* b) {
+    unsigned int i, j, k;
+    // polyvec al;
+    poly res;
 
-	int32_t al_tmp[LWE_N] = {0x00};
-	int32_t b_tmp[MODULE_RANK][LWE_N] = {0x00};
-	int32_t res_tmp[LWE_N] = {0x00};
+    int32_t al_tmp[LWE_N] = { 0x00 };
+    int32_t b_tmp[MODULE_RANK][LWE_N] = { 0x00 };
+    int32_t res_tmp[LWE_N] = { 0x00 };
 
-	//* ntt(b)
-	for (i = 0; i < MODULE_RANK; i++) {
-		for (j = 0; j < LWE_N; j++) {
-			b_tmp[i][j] = b->vec[i].coeffs[j];
-		}
-		ntt(b_tmp[i]);
-	}
+    //* ntt(b)
+    for (i = 0; i < MODULE_RANK; i++) {
+        for (j = 0; j < LWE_N; j++) {
+            b_tmp[i][j] = b->vec[i].coeffs[j];
+        }
+        ntt(b_tmp[i]);
+    }
 
-	for (i = 0; i < MODULE_RANK; ++i) {
-		for (j = 0; j < MODULE_RANK; ++j) {
-			for (k = 0; k < LWE_N; ++k) {
-				al_tmp[k] = (int32_t)(int16_t)(a[i].vec[j].coeffs[k] >> _16_LOG_Q);
-			}
+    for (i = 0; i < MODULE_RANK; ++i) {
+        for (j = 0; j < MODULE_RANK; ++j) {
+            for (k = 0; k < LWE_N; ++k) {
+                al_tmp[k] = (int32_t)(int16_t)(a[i].vec[j].coeffs[k] >> _16_LOG_Q);
+            }
 
-			ntt(al_tmp);
+            ntt(al_tmp);
 
-			if (j == 0) {
-				ntt_mul(res_tmp, al_tmp, b_tmp[j]);
-			} else {
-				ntt_mul_acc(res_tmp, al_tmp, b_tmp[j]);
-			}
-		}
-		inv_ntt(res_tmp);
-		for (j = 0; j < LWE_N; ++j) {
-			// res.coeffs[j] = (uint16_t)(res_tmp[j] & ((1 << LOG_Q) - 1));
-			res.coeffs[j] = (uint16_t)res_tmp[j];
-			res.coeffs[j] <<= _16_LOG_Q;
-		}
+            if (j == 0) {
+                ntt_mul(res_tmp, al_tmp, b_tmp[j]);
+            }
+            else {
+                ntt_mul_acc(res_tmp, al_tmp, b_tmp[j]);
+            }
+        }
+        inv_ntt(res_tmp);
+        for (j = 0; j < LWE_N; ++j) {
+            // res.coeffs[j] = (uint16_t)(res_tmp[j] & ((1 << LOG_Q) - 1));
+            res.coeffs[j] = (uint16_t)res_tmp[j];
+            res.coeffs[j] <<= _16_LOG_Q;
+        }
 
-		poly_sub(&r->vec[i], &r->vec[i], &res);
-	}
+        poly_sub(&r->vec[i], &r->vec[i], &res);
+    }
 }
 
 #endif
@@ -1235,8 +1238,8 @@ void Rq_to_bytes(uint8_t bytes[PKPOLY_BYTES], const poly* data) {
     int16_t buf[DATA_OFFSET * 2] = { 0 };
     for (i = 0; i < 2; ++i) {
         for (j = 0; j < DATA_OFFSET; ++j) {
-            buf[b_idx + j]  = tmp[d_idx + j]                   << 8;  // buf[0~15 + 8*b_idx] = tmp[0  ~ 15 + 128*b_idx] 1100 0000 0000 0000 
-            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET + j]     << 6;  // buf[0~15 + 8*b_idx] = tmp[16 ~ 31 + 128*b_idx] 0011 0000 0000 0000
+            buf[b_idx + j] = tmp[d_idx + j] << 8;  // buf[0~15 + 8*b_idx] = tmp[0  ~ 15 + 128*b_idx] 1100 0000 0000 0000 
+            buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET + j] << 6;  // buf[0~15 + 8*b_idx] = tmp[16 ~ 31 + 128*b_idx] 0011 0000 0000 0000
             buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 2 + j] << 4;  // buf[0~15 + 8*b_idx] = tmp[32 ~ 47 + 128*b_idx] 0000 1100 0000 0000
             buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 3 + j] << 2;  // buf[0~15 + 8*b_idx] = tmp[48 ~ 63 + 128*b_idx] 0000 0011 0000 0000
             buf[b_idx + j] |= tmp[d_idx + DATA_OFFSET * 4 + j];       // buf[0~15 + 8*b_idx] = tmp[64 ~ 79 + 128*b_idx] 0000 0000 1100 0000 
@@ -1281,7 +1284,7 @@ void bytes_to_Rq(poly* data, const uint8_t bytes[PKPOLY_BYTES]) {
 #if LOG_Q == 10
     for (i = 0; i < LWE_N; ++i)
         data->coeffs[i] = (int16_t)bytes[i] << 8;               // data->coeffs[i]의 상위 8bit를 shake128의 결과값으로 집어 넣어 줌
-                                                                // enc 과정에서는 b 행렬을 저장
+    // enc 과정에서는 b 행렬을 저장
 
     int16_t buf[DATA_OFFSET * 2] = { 0 };
     load16_littleendian(buf, DATA_OFFSET * 2, bytes + LWE_N);   // buf 배열에 들어가지 않은 나머지 bytes 값을 저장
@@ -1289,8 +1292,8 @@ void bytes_to_Rq(poly* data, const uint8_t bytes[PKPOLY_BYTES]) {
 
     for (i = 0; i < 2; ++i) {
         for (j = 0; j < DATA_OFFSET; ++j) {
-            tmp[d_idx + j]                   = buf[b_idx + j] >> 8; // temp[0  ~ 15 + 128*d_i] = buf[0~15 + 16*b_i] >> 8; temp에 buf의 상위 8bit를 저장
-            tmp[d_idx + DATA_OFFSET + j]     = buf[b_idx + j] >> 6; // temp[16 ~ 31 + 128*d_i] = buf[0~15 + 16*b_i] >> 6; temp에 buf의 상위 10bit를 저장
+            tmp[d_idx + j] = buf[b_idx + j] >> 8; // temp[0  ~ 15 + 128*d_i] = buf[0~15 + 16*b_i] >> 8; temp에 buf의 상위 8bit를 저장
+            tmp[d_idx + DATA_OFFSET + j] = buf[b_idx + j] >> 6; // temp[16 ~ 31 + 128*d_i] = buf[0~15 + 16*b_i] >> 6; temp에 buf의 상위 10bit를 저장
             tmp[d_idx + DATA_OFFSET * 2 + j] = buf[b_idx + j] >> 4; // temp[32 ~ 47 + 128*d_i] = buf[0~15 + 16*b_i] >> 4; temp에 buf의 상위 12bit를 저장
             tmp[d_idx + DATA_OFFSET * 3 + j] = buf[b_idx + j] >> 2; // temp[48 ~ 63 + 128*d_i] = buf[0~15 + 16*b_i] >> 2; temp에 buf의 상위 14bit를 저장
             tmp[d_idx + DATA_OFFSET * 4 + j] = buf[b_idx + j];      // temp[64 ~ 79 + 128*d_i] = buf[0~15 + 16*b_i];      temp에 buf를 저장
@@ -1853,7 +1856,7 @@ void computeC1(polyvec* c1, const polyvec A[MODULE_RANK], const polyvec* r) {
     matrix_vec_mult_add(c1, A, r);      // 여기에서 결과값은 상위 10bit에 저장되어 있음
 
     // Rounding q to p
-    for (i = 0; i < MODULE_RANK; ++i) { 
+    for (i = 0; i < MODULE_RANK; ++i) {
         for (j = 0; j < LWE_N; ++j) {
             c1->vec[i].coeffs[j] =                                          // 반올림을 보정값 RD_ADD를 더해주고
                 ((c1->vec[i].coeffs[j] + RD_ADD) & RD_AND) >> _16_LOG_P;    // 남는 비트 수 만큼 남겨 준 후 결과값을 위해 >> 6 을 진행
@@ -1889,9 +1892,9 @@ void genAx(polyvec A[MODULE_RANK], const uint8_t seed[PKSEED_BYTES]) {
     unsigned int i, j;
     uint8_t buf[PKPOLY_BYTES] = { 0 }, tmpseed[PKSEED_BYTES + 2];
     memcpy(tmpseed, seed, PKSEED_BYTES);                            // tmpseed[0~31] = seed
-    for (i = 0; i < MODULE_RANK; i++) {                             
+    for (i = 0; i < MODULE_RANK; i++) {
         for (j = 0; j < MODULE_RANK; j++) {
-            tmpseed[32] = i;                                        
+            tmpseed[32] = i;
             tmpseed[33] = j;
             shake128(buf, PKPOLY_BYTES, tmpseed, PKSEED_BYTES + 2); // buf에 값을 생성해서
             bytes_to_Rq(&A[i].vec[j], buf);                         // A에 값을 저장, (상위 10bit -> 실제 A, 하위 6bit -> 00 0000 으로 저장되어 있음)
@@ -1926,7 +1929,7 @@ void genSx_vec(secret_key* sk, const uint8_t seed[CRYPTO_BYTES]) {
 void genPubkey(public_key* pk, const secret_key* sk,
     const uint8_t err_seed[CRYPTO_BYTES]) {
     genAx(pk->A, pk->seed);                         // seed[32~63]을 통해 A 행렬 생성
-                                                    // 생성한 A 행렬은 10bit로 modulo 되어 있지 않고 16bit 표현임, 이후 genBx 함수를 통해서 modulo 연산이 진행됨
+    // 생성한 A 행렬은 10bit로 modulo 되어 있지 않고 16bit 표현임, 이후 genBx 함수를 통해서 modulo 연산이 진행됨
 
     memset(&(pk->b), 0, sizeof(uint16_t) * LWE_N);
     // Initialized at addGaussian, Unnecessary
@@ -2002,7 +2005,7 @@ void indcpa_keypair(uint8_t pk[PUBLICKEY_BYTES],
     memcpy(&pk_tmp.seed, seed + CRYPTO_BYTES, PKSEED_BYTES);    // pk_tmp.seed에에 생성한 seed[32~63]을 저장
     genPubkey(&pk_tmp, &sk_tmp, seed);                          // seed[32~63]을 통해 A를 생성, 생성한 s와 결합하여 b = -As + e를 생성
 
-    memset(pk, 0, PUBLICKEY_BYTES);                             
+    memset(pk, 0, PUBLICKEY_BYTES);
     memset(sk, 0, PKE_SECRETKEY_BYTES);
     save_to_string_pk(pk, &pk_tmp);                             // pk = A seed(seed[32~63]) | b  로 저장
     save_to_string_sk(sk, &sk_tmp);                             // sk = s (save_string 의 결과로 sk는 1, -1을 2bit로 저장하기 때문에, 1 -> 01, -1 -> 11, 0 -> 00 으로 저장)
@@ -2019,7 +2022,7 @@ void indcpa_enc(uint8_t ctxt[CIPHERTEXT_BYTES],
 
     // Compute a vector r = hwt(delta, H'(pk))
     polyvec r;
-    memset(&r, 0, sizeof(polyvec));             
+    memset(&r, 0, sizeof(polyvec));
 
     if (seed == NULL)
         randombytes(seed_r, DELTA_BYTES);           // enc_kem 과정에서 생성한 random seed가 없으면 random 값을 생성해서 사용
@@ -2030,7 +2033,7 @@ void indcpa_enc(uint8_t ctxt[CIPHERTEXT_BYTES],
 
     // Compute c1(x), c2(x)
     ciphertext ctxt_tmp;
-    memset(&ctxt_tmp, 0, sizeof(ciphertext));   
+    memset(&ctxt_tmp, 0, sizeof(ciphertext));
     computeC1(&(ctxt_tmp.c1), pk_tmp.A, &r);        // p/q(Ar)
     computeC2(&(ctxt_tmp.c2), mu, &pk_tmp.b, &r);   // p'/q * (br) + p'/t * mu
 
@@ -2047,20 +2050,20 @@ void indcpa_dec(uint8_t delta[DELTA_BYTES],
     memset(&sk_tmp, 0, sizeof(secret_key));
     load_from_string_sk(&sk_tmp, sk);                   // byte 형태의 sk를 다항식 형태로 변경
 
-    ciphertext ctxt_tmp;            
+    ciphertext ctxt_tmp;
     load_from_string(&ctxt_tmp, ctxt);                  // byte 형태의 c1, c2를 다항식 형태로 변경
 
-    unsigned int i, j;          
+    unsigned int i, j;
     c1_temp = ctxt_tmp.c1;                              // c1을 temp에 저장
     delta_temp = ctxt_tmp.c2;                           // c2를 temp에 저장
-    for (i = 0; i < LWE_N; ++i)         
+    for (i = 0; i < LWE_N; ++i)
         delta_temp.coeffs[i] <<= _16_LOG_P2;            // c2를 1111 1000 0000 0000 으로 상위 bit에 저장
     for (i = 0; i < MODULE_RANK; ++i)
         for (j = 0; j < LWE_N; ++j)
             c1_temp.vec[i].coeffs[j] <<= _16_LOG_P;     // c1을 1111 1111 0000 0000 으로 상위 bit에 저장
-                                                        // -> 이는 rounding을 진행할 때 bit 연산으로 진행하기 위함
+    // -> 이는 rounding을 진행할 때 bit 연산으로 진행하기 위함
 
-    // Compute delta = (delta + c1^T * s)
+// Compute delta = (delta + c1^T * s)
     vec_vec_mult_add(&delta_temp, &c1_temp, &sk_tmp, _16_LOG_P);    // c2 + c1 * s 를 진행
 
     // Compute delta = 2/p * delta
@@ -2087,7 +2090,7 @@ void indcpa_dec(uint8_t delta[DELTA_BYTES],
 void crypto_kem_keypair(uint8_t* pk, uint8_t* sk) {
     indcpa_keypair(pk, sk);                             // PKE keygen 스킴을 통해 pk, sk 생성
     randombytes(sk + PKE_SECRETKEY_BYTES, T_BYTES);     // 암묵적 거부를 위한 random값 t 생성 
-    for (int i = 0; i < PUBLICKEY_BYTES; i++)           
+    for (int i = 0; i < PUBLICKEY_BYTES; i++)
         sk[i + PKE_SECRETKEY_BYTES + T_BYTES] = pk[i];  // sk = sk | t | pk 로 저장
 }
 
@@ -2096,12 +2099,12 @@ int crypto_kem_enc(uint8_t* ctxt, uint8_t* ss, const uint8_t* pk) {
     uint8_t buf[DELTA_BYTES + CRYPTO_BYTES] = { 0 };
 
     randombytes(mu, DELTA_BYTES);                                   // shared secret key의 seed값인 mu 생성
-    
+
     hash_h(buf, pk, PUBLICKEY_BYTES);                               // H(pk)   
     hash_g(buf, DELTA_BYTES + CRYPTO_BYTES, mu, DELTA_BYTES, buf,   // seed | ssk = G(mu, H(pk))
         SHA3_256_HashSize);
 
-    memset(ss, 0, CRYPTO_BYTES);                                    
+    memset(ss, 0, CRYPTO_BYTES);
     indcpa_enc(ctxt, pk, mu, buf);                                  // pke 스킴의 encryption 과정을 통해 mu를 encryption
     cmov(ss, buf + DELTA_BYTES, CRYPTO_BYTES, 1);                   // ss에 G(mu, H(pk))[32~63] 을 저장
 
@@ -2140,6 +2143,9 @@ int crypto_kem_dec(uint8_t* ss, const uint8_t* ctxt, const uint8_t* sk) {
 }
 
 
+#define TEST_MOD 1
+
+#if TEST_MOD == 0
 
 int main()
 {
@@ -2171,6 +2177,185 @@ int main()
     }
     sk = NULL;
     pk = NULL;
-    
+
     return 0;
 }
+
+#elif TEST_MOD == 1
+
+#define NTEST 10001
+
+typedef struct CYCLE_RESULT {
+    uint64_t keygen[NTEST];
+    uint64_t encap[NTEST];
+    uint64_t decap[NTEST];
+} result_t;
+
+int static compare(const void* first, const void* second)
+{
+    if (*(int*)first > *(int*)second)
+        return 1;
+    else if (*(int*)first < *(int*)second)
+        return -1;
+    else
+        return 0;
+}
+
+int64_t cpucycles()
+{
+    return __rdtsc();
+}
+
+// intel i5-13400(2.5 GHz)
+int test_performance(result_t* result_cycle, int N)
+{
+    uint64_t result_keygen = 0;
+    uint64_t result_encap = 0;
+    uint64_t result_decap = 0;
+
+    int res;
+    uint8_t* pk = (uint8_t*)malloc(PUBLICKEY_BYTES);
+    uint8_t* sk = (uint8_t*)malloc(KEM_SECRETKEY_BYTES);
+
+    uint8_t ctxt[CIPHERTEXT_BYTES];
+    uint8_t ss[32];
+    uint8_t ss2[32];
+
+    uint64_t cycle0 = 0;
+    uint64_t cycle1 = 0;
+    uint64_t cycle2 = 0;
+    uint64_t cycle3 = 0;
+    uint64_t cycle4 = 0;
+    uint64_t cycle5 = 0;
+
+    cycle0 = cpucycles();
+    crypto_kem_keypair(pk, sk);
+    cycle1 = cpucycles();
+    result_keygen = cycle1 - cycle0;
+
+    cycle2 = cpucycles();
+    res = crypto_kem_enc(ctxt, ss, pk);
+    cycle3 = cpucycles();
+    result_encap = cycle3 - cycle2;
+
+    cycle4 = cpucycles();
+    res = crypto_kem_dec(ss2, ctxt, sk);
+    cycle5 = cpucycles();
+    result_decap = cycle5 - cycle4;
+
+    if (res != 0) return 1;
+    if (memcmp(ss, ss2, CRYPTO_BYTES) != 0) {
+        return 1;
+    }
+	result_cycle->keygen[N] = result_keygen;
+	result_cycle->encap[N] = result_encap;
+	result_cycle->decap[N] = result_decap;
+
+    free(pk);
+    free(sk);
+    sk = NULL;
+    pk = NULL;
+}
+
+
+
+int main()
+{
+    result_t result_cycle = { 0 };
+
+    uint64_t keygen_array[NTEST] = { 0 };
+    uint64_t encap_array[NTEST] = { 0 };
+    uint64_t decap_array[NTEST] = { 0 };
+	uint64_t result_all_cycle[NTEST] = { 0 };
+	uint64_t temp[NTEST] = { 0 };
+
+    double result_median_keygen = 0;
+    double result_median_encap = 0;
+    double result_median_decap = 0;
+
+    memset(&result_cycle, 0, sizeof(result_t));
+
+    for (int i = 0; i < NTEST; i++)
+    {
+        test_performance(&result_cycle, i);
+    }
+
+#if SMAUG_MODE == 1
+    printf("SMAUG-T 128 ");
+#elif SMAUG_MODE == 3
+    printf("SMAUG-T 192 ");
+#elif SMAUG_MODE == 5
+    printf("SMAUG-T 256 ");
+#endif
+
+#if MUL_MOD == 0
+    printf("Toom-Cook performance");
+#elif MUL_MOD == 1
+    printf("NTT performance");
+#endif
+
+#if RAND == 0
+    printf("-Window Rand\n");
+#elif RAND == 1
+    printf("-Select Rand\n");
+#endif
+
+    printf("NTEST : %d\n", NTEST);
+
+    for (int i = 0; i < NTEST; i++)
+    {
+        keygen_array[i] = result_cycle.keygen[i];
+        encap_array[i] = result_cycle.encap[i];
+        decap_array[i] = result_cycle.decap[i];
+		result_all_cycle[i] = keygen_array[i] + encap_array[i] + decap_array[i];
+        temp[i] = result_all_cycle[i];
+    }
+    
+    for (int i = 0; i < NTEST; i++)
+	{
+		temp[i] = result_all_cycle[i];
+    }
+    /*for (int i = 0; i < NTEST; i++)
+    {
+        printf("%d keygen : %llu, encap : %llu, decap : %llu\n", i, keygen_array[i], encap_array[i], decap_array[i]);
+    }*/
+
+	//printf("\n--------------------------------------------\n");
+
+
+	qsort(temp, NTEST, sizeof(uint64_t), compare);
+    for (int i = 0; i < NTEST; i++)
+    {
+        if (result_all_cycle[i] == temp[(NTEST - 1) / 2])
+        {
+            result_median_keygen = keygen_array[i];
+			result_median_encap = encap_array[i];
+            result_median_decap = decap_array[i];
+
+            printf("%d KeyGen : %llf, Encap : %llf, Decap : %llf\n", i, result_median_keygen, result_median_encap, result_median_decap);
+
+            break;
+        }
+        else
+			continue;
+    }
+
+
+    double result_keygen = 0;
+    double result_encap = 0;
+    double result_decap = 0;
+
+    result_keygen = (double)(250000000 / result_median_keygen);
+    result_encap = (double)(250000000 / result_median_encap);
+    result_decap = (double)(250000000 / result_median_decap);
+
+    printf("KeyGen per second : %llf\n", result_keygen);
+    printf("Encap per second : %llf\n", result_encap);
+    printf("Decap per second : %llf\n", result_decap);
+
+    return 0;
+}
+
+
+
+#endif
