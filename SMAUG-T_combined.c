@@ -1779,6 +1779,7 @@ int hwt(int16_t* res, const uint8_t* seed) {
     }                                                   // 사용하는 seed값을 변경하기 위해서 return -1
 
     shake256_squeeze(sign, LWE_N / 4, &state);          // hamming weight의 결과 값을 위한 sign 값을 생성
+    // -> shake256_squeeze(sign, LWE_N / 8, &state); 로 변경해도 무방함
 
     int16_t t0;
     int16_t c0 = LWE_N - HS;        // 256 - 70 = 186
